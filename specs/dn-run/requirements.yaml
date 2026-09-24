@@ -1,0 +1,245 @@
+# FEAT-006 — 要件の単一の正。実装・テスト・レビューはこれに従属する。
+# 出典: 実装指示書 §7 CLI, §9 冪等性・エラー処理, §10 統合テスト
+id: FEAT-006
+title: "Distill Nexus 一括実行・状態表示・export"
+status: frozen
+
+intent: "全フェーズを1コマンドで冪等に実行でき、中断や部分失敗からも再開でき、人間とエージェントの両方が同じ CLI の機械可読出力を読めるようにする。"
+
+out_of_scope:
+  - "PyPI への公開作業・リリース自動化"
+  - "常駐監視（ディレクトリ変更を検知して自動実行する daemon / watch モード）"
+  - "SIGINT 以外のシグナル（SIGKILL 中の書き込み途中ファイル）からの自動修復。manifest の追記単位での整合のみ保証する"
+
+assumptions:
+  - id: AS-021
+    statement: "`tests/fixtures/sample_tree/` は `scripts/make_sample_tree.py`
+      で生成してコミットする。Windows 予約名・260文字超のパスを持つファイルは Windows の checkout
+      を壊すためコミットせず、テスト実行時に一時ディレクトリへ生成する"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-022
+    statement: "run の「変更なし」判定は、scan の新規・変更ファイル数0、LLM 実呼び出し0、apply 移動0 のときに `no
+      changes` を出力することとする。_knowledge/ は毎回再生成するが、生成内容が同一なら変更に数えない"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-034
+    statement: "Ctrl-C（KeyboardInterrupt）で中断した場合の終了コードは 130（シェル慣例）とし、AS-024 の 0〜4
+      の体系の外に置く"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-037
+    statement: "指示書 §7 の共通オプションのうち AC
+      を持たないもの（--lang、--include-hidden、--follow-symlinks、--full-hash、-v/-vv、--no\
+      -color、export の --output）は指示書どおりに実装する。--lang は LLM への出力言語指示と _knowledge/
+      の見出し語（日本語/英語）を切り替える。auto はソースの文字数で多い言語"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
+open_questions: []
+
+acceptance:
+  - id: AC-070
+    kind: functional
+    given: "taxonomy.yaml を持つサンプルツリー"
+    when: "`--apply` を付けずに `dn run --dry-llm` を実行する"
+    then: "plan.json と _knowledge/ を生成し、元ファイルを1件も移動しない"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 0
+    verified_at: 2026-09-24
+    note: pytest tests/test_run.py 20 passed. plan.json存在(:35),
+      _knowledge/INDEX.md存在(:36), 元ファイルのパス・hash・mtime不変(:37)
+    evidence: tests/test_run.py:35
+
+  - id: AC-071
+    kind: functional
+    given: "サンプルツリーのコピー"
+    when: "`dn run --apply --yes` の後に `dn undo` を実行する"
+    then: "全ファイルの相対パス・ハッシュ・mtime が元ツリーと一致する"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 0
+    verified_at: 2026-09-24
+    note: run --apply --yes 後に移動発生(:47-48)、undo後に
+      tree_state(相対パス・sha256・mtime_ns)が元と完全一致(:51)
+    evidence: tests/test_run.py:51
+
+  - id: AC-072
+    kind: functional
+    given: "`dn run` を1回完了したサンプルツリー"
+    when: "もう一度 `dn run` を実行する"
+    then: "LLM の実呼び出し0件で終了し、`no changes` を出力する"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 0
+    verified_at: 2026-09-24
+    note: 2回目 run で llm.generated==0 かつ api_calls==0(:61)、message=='no changes' かつ
+      stderr に no changes(:62-63)。generated は全バックエンドのキャッシュミス数(src/dn/llm.py:157)
+    evidence: tests/test_run.py:61
+
+  - id: AC-073
+    kind: functional
+    given: "`--concurrency 1` で、モック LLM が3回目の分類呼び出しで KeyboardInterrupt を送出して中断した run"
+    when: "`dn run` を再実行する"
+    then: "中断前に完了した2件の LLM 呼び出しは再実行しない。残りのファイルのラベルを labels.jsonl
+      に保存する（末尾に途中まで書かれた行があっても読み飛ばす）"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 0
+    verified_at: 2026-09-24
+    note: concurrency=1で3回目classifyにKeyboardInterrupt、完了2件を確認(:91)、末尾に途中行を追記(:89)。再実行でclassify
+      3回のみ・完了2件のパスは再送なし(:99-102)、labels.jsonlから5件読める(:105)
+    evidence: tests/test_run.py:99
+
+  - id: AC-074
+    kind: functional
+    given: "apply の途中で移動に失敗して中断した run"
+    when: "manifest.json を読み、`dn undo` を実行する"
+    then: "manifest.json は JSON として parse でき、undo
+      は中断前に完了した移動だけを元の位置へ戻す（戻したファイルが元のパスに残る）"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 0
+    verified_at: 2026-09-24
+    note: 3件目の移動で中断後 manifest.json が json.loads 可能で moves==2(:129-130)、undo
+      restored==2 かつ4件とも元パスに存在(:133-135)
+    evidence: tests/test_run.py:129
+
+  - id: AC-075
+    kind: functional
+    given: "1ファイルだけ抽出に失敗するツリー"
+    when: "`dn run` を実行する"
+    then: "残りのファイルの処理を完了し、終了コード3を返す"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 1
+    verified_at: 2026-09-24
+    note: CLI run で exit 3・extract.failed==1 に加え、good.md が
+      classify(classified==1)/plan(entries)/distill(distilled==1)/sources.md
+      まで処理されたことを検証。pytest 通過
+    evidence: tests/test_run.py:140
+
+  - id: AC-076
+    kind: functional
+    given: "scan 済みで未分類のファイルがあるツリー"
+    when: "`dn status --json` を実行する"
+    then: "キャッシュ済み件数、未処理件数、推定コスト USD を JSON で標準出力に出力する"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 0
+    verified_at: 2026-09-24
+    note: scan後 status --json の stdout を JSON
+      parse、cached(extracted等4キー)・unprocessed.classify==2・estimate.cost_usd>0
+      を検証(:155-159)
+    evidence: tests/test_run.py:155
+
+  - id: AC-077
+    kind: functional
+    given: "任意のサブコマンド"
+    when: "`--json` を付けて実行する"
+    then: "標準出力は単一の JSON ドキュメントとして parse でき、進捗表示は標準エラーに出力する"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 1
+    verified_at: 2026-09-24
+    note: "init/scan/plan/apply/undo/distill/run/status/export の全9サブコマンド + init
+      エラー時を --json で実行し、stdout が単一 JSON(1行)として parse でき、plan/run/distill の進捗が
+      stderr のみに出ることを検証。init エラー時も error JSON・rc2。pytest 通過"
+    evidence: tests/test_run.py:196
+
+  - id: AC-078
+    kind: functional
+    given: "有効な plan.json"
+    when: "`--yes` を付けずに `dn apply` を実行し、確認プロンプトに `n` を入力する"
+    then: "どのファイルも移動せず、終了コード1を返す"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 1
+    verified_at: 2026-09-24
+    note: pty 上で実 CLI dn apply を起動し [y/N] プロンプトに n を入力、プロセス終了コード1・ツリー不変・manifest
+      非作成を検証(:222-242)。pytest 通過(Linux)
+    evidence: tests/test_run.py:222
+
+  - id: AC-079
+    kind: functional
+    given: "任意のサブコマンドの実行"
+    when: "実行が終了する"
+    then: "`.dn/logs/<run_id>.log` にログを保存する"
+    priority: should
+    verify: test
+    status: pass
+    attempts: 1
+    verified_at: 2026-09-24
+    note: "全9サブコマンドの CLI 実行それぞれで .dn/logs/<run_id>.log の存在と出力 log パス一致を検証(init
+      含む)。pytest 通過"
+    evidence: tests/test_run.py:253
+
+  - id: AC-068
+    kind: functional
+    given: "生成済みの _knowledge/"
+    when: "`dn export --format md` / `--format jsonl` / `--format zip` を実行する"
+    then: "それぞれ全ファイルを連結した単一の .md、1行1ファイルの .jsonl、_knowledge/ 全体の .zip を生成する"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 1
+    verified_at: 2026-09-24
+    note: "CLI export md は全ファイル本文が単一 .md に含まれること、jsonl は1行1ファイルで content 一致、zip は
+      _knowledge/ 全ファイルのバイト一致を検証。pytest 通過"
+    evidence: tests/test_run.py:265
+
+  - id: AC-101
+    kind: functional
+    given: "`dn run --apply --yes` を1回完了したサンプルツリー"
+    when: "もう一度 `dn run --apply --yes` を実行する"
+    then: "LLM の実呼び出し0件、manifest への移動記録の追記0件で終了し、`no changes` を出力する"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 0
+    verified_at: 2026-09-24
+    note: 2回目 run --apply --yes で llm.generated==0・changes False・message=='no
+      changes'(:232)、manifest の moves 総数不変(:233)、apply 未実行(:234)
+    evidence: tests/test_run.py:232
+
+  - id: AC-102
+    kind: functional
+    given: "標準入力が TTY でない環境（Claude Code・CI）"
+    when: "`--yes` なしで `dn apply` または `dn run --apply` を実行する"
+    then: "確認待ちで停止せず、ファイルを移動しないまま `--yes` が必要な旨を出力して終了コード2を返す"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 0
+    verified_at: 2026-09-24
+    note: apply と run --apply の両方で stdin をパイプ(非TTY)にし --yes なしで実行、rc==2・stderr に
+      --yes・ツリー不変を確認(:245-248)。rc 2 は EOF 読み込み由来の 1 ではないため確認待ちに入っていない
+    evidence: tests/test_run.py:245
+
+  - id: AC-103
+    kind: functional
+    given: "plan.json が無い対象ディレクトリ、または manifest.json が無い対象ディレクトリ"
+    when: "前者で `dn apply --yes`、後者で `dn undo` を実行する"
+    then: "対象ファイルが無い旨のエラーを出力し、終了コード2を返す"
+    priority: must
+    verify: test
+    status: pass
+    attempts: 0
+    verified_at: 2026-09-24
+    note: plan.json 無しで apply --yes → rc 2 かつ 'no plan found'(:255)、manifest 無しで
+      undo → rc 2 かつ 'no manifest found'(:257)
+    evidence: tests/test_run.py:255

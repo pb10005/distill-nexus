@@ -1,0 +1,39 @@
+# Conformance gate (conformance-kit): requirement lint + forward / reverse / assumption tracing.
+# Tests, lint and types for the Python package run in ci.yml.
+name: conformance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # reverse tracing needs the diff
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: spec lint
+        run: npx tsx scripts/spec-lint.ts
+
+      # PRs use --strict so a change that maps to no AC is an error.
+      - name: traceability
+        run: npx tsx scripts/trace-matrix.ts --base origin/${{ github.base_ref || 'main' }} --strict
+
+      - name: report
+        if: always()
+        run: npx tsx scripts/trace-matrix.ts --json > trace.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trace-matrix
+          path: trace.json

@@ -1,0 +1,3 @@
+gateway:
+  rate_limit: 100
+  timeout_ms: 200

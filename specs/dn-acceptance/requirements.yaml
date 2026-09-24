@@ -1,0 +1,122 @@
+# FEAT-008 — 要件の単一の正。実装・テスト・レビューはこれに従属する。
+# 出典: 実装指示書 §2 Claude Code 連携, §10 CI・受け入れ基準
+# FEAT-006 から、実 API / 実 CI / 実機が必要な受け入れ基準を分離した。
+id: FEAT-008
+title: "Distill Nexus Claude Code 連携と受け入れ基準"
+status: frozen
+
+intent: "Claude Code から CLI を安全に呼べるスキルを用意し、指示書 §10 の受け入れ基準のうち実 API・実 CI・実機を要する項目を人間が検証できる状態で渡す。"
+
+out_of_scope:
+  - "分類ロジックを Claude Code 側（スキル・プロンプト）に持たせること。スキルは CLI を呼ぶ手順のみを書く"
+  - "PyPI への公開作業・リリース自動化"
+  - "実 API キーを使った録画ファイル（tests/fixtures/llm/）の作成をこの実装セッションで行うこと"
+
+assumptions:
+  - id: AS-020
+    statement: "実 API キーと実 CI 実行を必要とする受け入れ基準（3OS の CI 緑、実応答を録画したサンプルでの分類精度、INDEX.md の QA 正答数、推定コストと実測の差、Claude Code 実機での plan→承認→apply）は verify: manual とし、本実装セッションでは証跡を作れないため人間に返す"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
+open_questions:
+  - id: OQ-001
+    from: AC-081
+    question: "AC-081 は実装側で判定不能: manual。GitHub Actions 未実行で証跡なし。.github/workflows/ci.yml に 3OS×3.11/3.12 の ruff/mypy/pytest --cov 定義はあるが、80%閾値が ci.yml 上に無く pyproject の fail_under 依存かは実行で確認要。人間の作業: PR を作成し ci の全6ジョブが緑であること、pytest --cov の合計が80%以上であることのジョブURLを evidence に記録する"
+    raised: 2026-09-24
+    status: resolved
+    resolution: "PR #1 の ci.yml run 35941495161（d411e40）で 3OS × Python 3.11/3.12 の6ジョブが全て success。verifier が pass と判定"
+  - id: OQ-002
+    from: AC-082
+    question: "AC-082 は実装側で判定不能: manual。ANTHROPIC_API_KEY 未設定で録画不可。tests/fixtures/llm/ も正解ラベル付きサンプルも存在しない。人間の作業: 実キーで DN_LLM_RECORD=1 により sample_tree(約40件)の分類応答を録画し、正解ラベル表を用意、DN_LLM_REPLAY=1 で再生して一致率90%以上を示す出力を evidence に記録する"
+    raised: 2026-09-24
+    status: open
+  - id: OQ-003
+    from: AC-083
+    question: "AC-083 は実装側で判定不能: manual。tests/fixtures/qa.yaml が存在せず、実 API での INDEX.md 生成もできない。人間の作業: qa.yaml(10問と正答)を用意し、実キーで sample_tree から INDEX.md を生成、新しい Claude セッションに貼って回答させ、8問以上正答した記録を evidence に残す"
+    raised: 2026-09-24
+    status: open
+  - id: OQ-004
+    from: AC-084
+    question: "AC-084 は実装側で判定不能: manual。ANTHROPIC_API_KEY 未設定で実測コストが取れない。人間の作業: 実キーで sample_tree に対し dn status --json の estimate.cost_usd を記録後 dn run を実行し、.dn/logs/<run_id>.json の実測コストとの差が±30%以内であることを evidence に記録する"
+    raised: 2026-09-24
+    status: open
+
+acceptance:
+  - id: AC-080
+    kind: functional
+    given: "リポジトリ"
+    when: "`.claude/skills/dn/SKILL.md` を読む"
+    then: "`dn plan --json` → 結果の要約提示 → ユーザー承認 → `dn apply --yes --json` の順の手順と、分類判断を CLI に委ねる旨の記述を含む"
+    priority: must
+    verify: inspection
+    evidence: ".claude/skills/dn/SKILL.md:29"
+    status: pass
+    attempts: 0
+    verified_at: 2026-09-24
+    note: "inspection: 手順3 dn plan --json(:29) → 要約提示(:32-36) → 手順4 明示承認(:37) → 手順5 dn apply --yes --json(:39) の順。分類判断を CLI に委ね自分で分類しない旨(:8-11)"
+
+  - id: AC-105
+    kind: functional
+    given: "リポジトリ"
+    when: "`.claude/skills/dn/SKILL.md` を読む"
+    then: "`dn plan` が終了コード0以外で失敗した場合と、ユーザーが承認を拒否した場合に `dn apply` を実行しない手順を含む"
+    priority: must
+    verify: inspection
+    evidence: ".claude/skills/dn/SKILL.md:30"
+    status: pass
+    attempts: 0
+    verified_at: 2026-09-24
+    note: "inspection: plan の終了コード0以外で停止し dn apply を実行しない(:30-31)、ユーザーが拒否したら dn apply を実行しない(:37-38)"
+
+  - id: AC-081
+    kind: functional
+    given: "GitHub Actions のワークフロー定義"
+    when: "PR を作成する"
+    then: "windows-latest / ubuntu-latest / macos-latest × Python 3.11 / 3.12 の全ジョブで ruff・mypy --strict・pytest --cov（80%以上）が成功する"
+    priority: must
+    verify: manual
+    evidence: "https://github.com/pb10005/distill-nexus/actions/runs/35941495161 (PR #1, head d411e40; jobs 107450126719/126761/126788/126541/126739/126774)"
+    status: pass
+    attempts: 0
+    verified_at: 2026-09-24
+    note: "run 35941495161 は pull_request イベント（PR #1）、head_sha d411e40。Jobs API で 3 OS × 3.11/3.12 の6ジョブすべてが conclusion=success で、各ジョブの ruff (lint)・ruff (format)・mypy --strict・pytest --cov ステップも個別に success であることを確認した。d411e40 時点の ci.yml と pyproject.toml は contents API で取得し、ローカルと同一だった。mypy は pyproject の [tool.mypy] strict=true で --strict 相当。80%閾値は [tool.coverage.report] fail_under=80 による。ロックされている pytest-cov 7.1.0 は cov_fail_under 未指定時に coverage 設定の fail_under を採用する（pytest_cov/plugin.py:270-271）ため、80%未満なら pytest ステップは失敗する。ジョブログ本体はダウンロードが proxy 403 で取得できず、CI上のカバレッジ実数値は未確認。ステップ結果とワークフロー定義から判断した。参考としてローカル実行では 132 passed、TOTAL 83.21%、Required test coverage of 80.0% reached だった。"
+
+  - id: AC-082
+    kind: nfr
+    given: "実 API で録画した `tests/fixtures/llm/` の応答と、正解ラベル付きのサンプルツリー（約40ファイル）"
+    when: "DN_LLM_REPLAY=1 で分類を実行する"
+    then: "正解ラベルとの一致率が 90% 以上"
+    priority: must
+    verify: manual
+    evidence: ""
+    status: blocked
+    attempts: 0
+    verified_at: 2026-09-24
+    note: "manual。ANTHROPIC_API_KEY 未設定で録画不可。tests/fixtures/llm/ も正解ラベル付きサンプルも存在しない。人間の作業: 実キーで DN_LLM_RECORD=1 により sample_tree(約40件)の分類応答を録画し、正解ラベル表を用意、DN_LLM_REPLAY=1 で再生して一致率90%以上を示す出力を evidence に記録する"
+
+  - id: AC-083
+    kind: nfr
+    given: "サンプルツリーから生成した INDEX.md と `tests/fixtures/qa.yaml` の10問"
+    when: "新しい Claude セッションに INDEX.md を貼って10問に答えさせる"
+    then: "10問中8問以上（80%以上）に正答する"
+    priority: must
+    verify: manual
+    evidence: ""
+    status: blocked
+    attempts: 0
+    verified_at: 2026-09-24
+    note: "manual。tests/fixtures/qa.yaml が存在せず、実 API での INDEX.md 生成もできない。人間の作業: qa.yaml(10問と正答)を用意し、実キーで sample_tree から INDEX.md を生成、新しい Claude セッションに貼って回答させ、8問以上正答した記録を evidence に残す"
+
+  - id: AC-084
+    kind: nfr
+    given: "サンプルツリーに対する実 API での実行"
+    when: "`dn status` の推定コストと `.dn/logs/<run_id>.json` の実測コストを比べる"
+    then: "差が ±30% 以内"
+    priority: should
+    verify: manual
+    evidence: ""
+    status: blocked
+    attempts: 0
+    verified_at: 2026-09-24
+    note: "manual。ANTHROPIC_API_KEY 未設定で実測コストが取れない。人間の作業: 実キーで sample_tree に対し dn status --json の estimate.cost_usd を記録後 dn run を実行し、.dn/logs/<run_id>.json の実測コストとの差が±30%以内であることを evidence に記録する"
