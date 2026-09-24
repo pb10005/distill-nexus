@@ -60,8 +60,13 @@ def write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> None:
 
 def append_jsonl(path: Path, record: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    torn = False
+    if path.exists() and path.stat().st_size:
+        with path.open("rb") as rf:
+            rf.seek(-1, os.SEEK_END)
+            torn = rf.read(1) != b"\n"  # a crash left a partial last line
     with path.open("a", encoding="utf-8", newline="\n") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        f.write(("\n" if torn else "") + json.dumps(record, ensure_ascii=False) + "\n")
         f.flush()
 
 

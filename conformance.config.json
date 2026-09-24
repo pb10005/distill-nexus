@@ -16,7 +16,7 @@
     "__pycache__",
     "tests/fixtures"
   ],
-  "baseRef": "origin/master",
+  "baseRef": "origin/main",
   "codeExtensions": [
     "ts",
     "tsx",

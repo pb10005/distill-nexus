@@ -164,6 +164,7 @@ class Pipeline:
         if self.opts.interactive and not self.opts.json:
             prompt = self.opts.ask or (lambda q: input(q))
 
+            # @assumption AS-014
             def ask(e: InventoryEntry, rec: LabelRecord) -> str | None:  # AS-014
                 slugs = ", ".join(self.ws.taxonomy.slugs) if self.ws.taxonomy else ""
                 ans = prompt(
@@ -354,6 +355,7 @@ class Pipeline:
             report.data["apply"] = _apply_dict(res)
             entries = self.scan().entries  # paths changed: knowledge sources point at organized paths
         report.data.update(await self._knowledge(entries))
+        # @assumption AS-022
         changed = sr.changed_total > 0 or self.generated() > 0 or moved > 0
         report.data["changes"] = changed
         if not changed:

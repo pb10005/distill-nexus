@@ -120,6 +120,7 @@ def _src_str(src: dict[str, Any], path: str) -> str:
     return f"{path}#{loc}" if loc else path
 
 
+# @assumption AS-019 - source = current path + '#locator'
 def load_knowledge(ws: Workspace, entries: list[InventoryEntry]) -> Knowledge:
     labels = load_labels(ws, taxonomy_key(ws.taxonomy))
     paths: dict[str, str] = {}
@@ -177,6 +178,7 @@ def load_knowledge(ws: Workspace, entries: list[InventoryEntry]) -> Knowledge:
 # ------------------------------------------------------------------ normalization
 
 
+# @assumption AS-017
 def candidate_pairs(names: list[str]) -> list[tuple[str, str]]:
     """AS-017: similarity >= 0.8, or at least one shared whitespace token."""
     uniq = sorted(set(names))
@@ -390,6 +392,7 @@ L10N = {
         "conflicts": "ソース間の矛盾",
         "gaps": "欠落・曖昧な情報",
         "facts": "根拠となる事実",
+        "entities": "エンティティ",
         "topics": "トピック",
         "files": "ナレッジファイル",
         "overview": "概要",
@@ -410,6 +413,7 @@ L10N = {
         "conflicts": "Conflicts between sources",
         "gaps": "Missing or ambiguous information",
         "facts": "Supporting facts",
+        "entities": "Entities",
         "topics": "Topics",
         "files": "Knowledge files",
         "overview": "Overview",
@@ -485,6 +489,7 @@ def open_questions_md(k: Knowledge, facts: list[dict[str, Any]], t: dict[str, st
     return "\n".join(lines) + "\n"
 
 
+# @assumption AS-018
 def harvest_manual(kdir: Path) -> dict[str, list[str]]:
     blocks: dict[str, list[str]] = {}
     tdir = kdir / "topics"
@@ -641,8 +646,14 @@ async def synthesize(
         if spec.description:
             body += [spec.description, ""]
         body.append(sanitize_md(md))
+        if tents:
+            body += ["", f"## {t['entities']}", ""] + [
+                f"- {e['id']}: {md_escape(e['name'])} ({e['type']})"
+                + (f" - {md_escape(e['description'])}" if e["description"] else "")
+                for e in tents
+            ]
         if tfacts:
-            body += [f"## {t['facts']}", ""] + [
+            body += ["", f"## {t['facts']}", ""] + [
                 f"- {f['id']}: {md_escape(f['statement'])} (source: {f['source']})" for f in tfacts
             ]
         for block in manual.get(spec.slug, []):
@@ -735,18 +746,18 @@ async def synthesize(
                 "".join(keep).rstrip()
                 + f"\n\n{t['more']}: [topics/overview-detail.md](topics/overview-detail.md)\n"
             )
-        rows = 0
-        gloss = glossary_md(terms, t, limit=0, more_link="topics/glossary.md")
-        while rows < len(terms):
-            cand = glossary_md(terms, t, limit=rows + 1, more_link="topics/glossary.md")
-            if total(index_md(["- [topics/glossary.md](topics/glossary.md)"]), overview_md, cand) > budget:
-                break
-            rows += 1
-            gloss = cand
         index = index_md(
             [f"- [topics/glossary.md](topics/glossary.md) - {t['glossary']} ({t['more']})"]
             + (["- [topics/overview-detail.md](topics/overview-detail.md)"] if detail.strip() else [])
         )
+        rows = 0
+        gloss = glossary_md(terms, t, limit=0, more_link="topics/glossary.md")
+        while rows < len(terms):
+            cand = glossary_md(terms, t, limit=rows + 1, more_link="topics/glossary.md")
+            if total(index, overview_md, cand) > budget:
+                break
+            rows += 1
+            gloss = cand
     write("glossary.md", gloss)
     write("overview.md", overview_md)
     write("INDEX.md", index)

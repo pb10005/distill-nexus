@@ -41,7 +41,7 @@ def _python_docs(src: str) -> tuple[list[str], list[str]]:
 
 def extract(path: Path) -> Extracted:
     src = normalize_newlines(decode(path.read_bytes()))
-    lines = src.split("\n")
+    lines = src.rstrip("\n").split("\n")
     if path.suffix.lower() == ".py":
         docs, names = _python_docs(src)
     else:

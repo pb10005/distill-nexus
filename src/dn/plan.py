@@ -136,6 +136,7 @@ def build_plan(
         sub = _valid_subcategory(ws, category, rec.label.subcategory if rec else None)
         if sub:
             folder = folder / safe_name(sub)
+        # @assumption AS-013 - year only from the document date, never mtime
         if rec and rec.label.date:
             folder = folder / rec.label.date[:4]
         name = _file_name(e, rec, rename)

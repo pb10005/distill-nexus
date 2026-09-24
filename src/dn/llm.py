@@ -73,6 +73,7 @@ def load_prompt(name: str) -> str:
 _JA = re.compile(r"[぀-ヿ㐀-鿿ｦ-ﾟ]")
 
 
+# @assumption AS-007
 def detect_lang(text: str) -> str:
     """AS-007: >=20% kana/kanji among letters -> ja; latin letters -> en; else und."""
     sample = text[:20000]
@@ -122,7 +123,7 @@ def scrub(text: str, root: Path | None) -> str:
     """Remove the absolute target path, the home path and the OS user name (§9 privacy)."""
     if root is not None:
         for variant in {str(root), root.as_posix()}:
-            text = text.replace(variant, "<root>")
+            text = text.replace(variant, "<target>")
     home = str(Path.home())
     if len(home) > 1:
         text = text.replace(home, "~").replace(Path.home().as_posix(), "~")
@@ -310,7 +311,7 @@ class LLM:
         if self.lang in ("ja", "en"):
             system += f"\n\nOutput language: {'Japanese' if self.lang == 'ja' else 'English'}."
         schema = output.tool_schema(**(schema_overrides or {}))
-        req = self.build_request(phase, system, f"submit_{phase}", schema, content, model, shared_context)
+        req = self.build_request(phase, system, f"submit_{prompt}", schema, content, model, shared_context)
 
         error: str | None = None
         for attempt in range(2):

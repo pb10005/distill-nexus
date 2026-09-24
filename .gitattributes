@@ -1,0 +1,2 @@
+# Fixtures must be byte-identical on every OS (CRLF + CP932 samples, binaries).
+tests/fixtures/** -text

@@ -7,7 +7,8 @@
     "lint:spec": "tsx scripts/spec-lint.ts",
     "trace": "tsx scripts/trace-matrix.ts",
     "verdict": "tsx scripts/record-verdict.ts",
-    "gate": "tsx scripts/gate.ts"
+    "gate": "tsx scripts/gate.ts && npm test",
+    "test": "uv run pytest"
   },
   "dependencies": {
     "yaml": "^2.9.1"

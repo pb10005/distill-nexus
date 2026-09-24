@@ -12,6 +12,7 @@ MIN_PAGE_CHARS = 50
 OCR_DPI = 150
 
 
+# @assumption AS-025 - with --no-images low-text pages stay as text
 def extract(path: Path, want_images: bool = True) -> Extracted:
     import pymupdf
 

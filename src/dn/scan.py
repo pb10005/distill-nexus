@@ -75,12 +75,16 @@ class ScanResult:
         }
 
 
+# @assumption AS-005
 def _ignore_spec(ws: Workspace) -> pathspec.PathSpec:  # type: ignore[type-arg]
     patterns = list(ws.config.exclude)
     ignore = ws.root / IGNORE_FILE
     if ignore.exists():
         patterns += ignore.read_text(encoding="utf-8").splitlines()
-    return pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+    try:
+        return pathspec.PathSpec.from_lines("gitignore", patterns)
+    except (KeyError, LookupError):  # pathspec < 0.12.2 has no "gitignore" factory
+        return pathspec.PathSpec.from_lines("gitwildmatch", patterns)
 
 
 def _generated_paths(ws: Workspace) -> set[Path]:
