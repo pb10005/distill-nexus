@@ -57,8 +57,13 @@ class Config(BaseModel):
     # FEAT-009: fewer, cheaper calls
     classify_batch_size: int = Field(default=10, ge=1, le=50)
     classify_batch_chars: int = Field(default=24000, ge=1000)
-    rules: list[Rule] = Field(default_factory=lambda: list(DEFAULT_RULES))
+    rules: list[Rule] = Field(default_factory=list)  # user rules; DEFAULT_RULES always follow
     images: bool = False  # @assumption AS-041 - vision is opt-in
+
+    @property
+    def effective_rules(self) -> list[Rule]:
+        """User rules first (first match wins), then the built-in defaults (AS-040)."""
+        return [*self.rules, *(d for d in DEFAULT_RULES if d not in self.rules)]
 
     @property
     def effective_synth_model(self) -> str:
@@ -188,8 +193,8 @@ knowledge:
 classify_batch_size: 10             # files per classification call
 images: false                       # true = send images / scanned PDF pages to Claude vision
 rules:                              # decided without the LLM; first match wins
-  - glob: "*.log"
-    category: misc
+  - glob: "contracts/**"              # example; the built-in "*.log" -> misc rule is always applied last
+    category: contracts
 """
 
 TAXONOMY_TEMPLATE = """\

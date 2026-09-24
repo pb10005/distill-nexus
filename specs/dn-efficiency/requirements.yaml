@@ -25,7 +25,7 @@ assumptions:
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-040
-    statement: "ルールは .dn/config.yaml の rules に {glob, category} の並びで書き、対象ディレクトリからの相対 POSIX パスに gitignore 構文で照合して最初に一致したものを使う。既定ルールは `*.log` → misc の1件。category は taxonomy の slug か misc（予約語だが有効）。taxonomy が無いときは misc 以外のルールを警告して無視する。ラベルは内容ハッシュ単位なので、同じハッシュのファイルのどれか1件がルールに一致すればハッシュ全体にそのルールを適用する（複数ルールに一致したらパス順で最初のファイルの最初のルール）。ルールは毎回 LLM 呼び出しの前に評価し、保存済みラベルより優先する。ルールで決まったラベルは confidence 1.0、title はファイル名、category が misc なら has_domain_knowledge は false"
+    statement: "ルールは .dn/config.yaml の rules に {glob, category} の並びで書き、対象ディレクトリからの相対 POSIX パスに gitignore 構文で照合して最初に一致したものを使う。既定ルールは `*.log` → misc の1件で、ユーザーが rules を書いても置き換わらず常にユーザーのルールの後ろに適用される。category は taxonomy の slug か misc（予約語だが有効）。taxonomy が無いときは misc 以外のルールを警告して無視する。ラベルは内容ハッシュ単位なので、同じハッシュのファイルのどれか1件がルールに一致すればハッシュ全体にそのルールを適用する（複数ルールに一致したらパス順で最初のファイルの最初のルール）。ルールは毎回 LLM 呼び出しの前に評価し、保存済みラベルより優先する。ルールで決まったラベルは confidence 1.0、title はファイル名、category が misc なら has_domain_knowledge は false"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -45,8 +45,11 @@ acceptance:
     then: "分類の LLM 呼び出しは3回で、25件すべてのラベルを labels.jsonl に記録する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: classify() 実行で分類呼び出し3回(10/10/5件)と25件のラベル記録をアサート。テスト通過
+    evidence: tests/test_efficiency.py:66
 
   - id: AC-107
     kind: nfr
@@ -55,8 +58,11 @@ acceptance:
     then: "1回の分類呼び出しで送る本文の合計は 24,000 文字以下で、各ファイルの本文は 6,000 文字以下"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 10件x5000字で3呼び出し(4+4+2)、各呼び出しの本文合計<=24000・各本文<=6000をアサート。テスト通過
+    evidence: tests/test_efficiency.py:78
 
   - id: AC-108
     kind: functional
@@ -65,8 +71,11 @@ acceptance:
     then: "そのバッチの各ファイルを単体分類でやり直し、全ファイルのラベルを labels.jsonl に記録する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: file_id欠落を2回返すバッチ→バッチ2回・単体4回・再生成プロンプトに欠落IDを含む・4件全ラベル記録をアサート。テスト通過
+    evidence: tests/test_efficiency.py:92
 
   - id: AC-109
     kind: functional
@@ -75,8 +84,11 @@ acceptance:
     then: "2件とも LLM を呼ばずにラベルを記録し、nda.txt は contracts、app.log は misc（has_domain_knowledge: false）になる"
     priority: must
     verify: test
-    status: pending
-    attempts: 0
+    status: fail
+    attempts: 1
+    verified_at: 2026-09-24
+    note: テストのconfigが *.log→misc を明示しており既定ルールの効果を検証していない。configに docs/legal/** のみを書くと rules が既定を置換し(src/dn/config.py:60)、logs/app.log は LLM(submit_classify)に送られることを手元で確認。givenの『既定ルールに一致する』を満たさない。置換が意図ならreconcileで要件側を直すこと
+    evidence: tests/test_efficiency.py:115
 
   - id: AC-110
     kind: functional
@@ -85,8 +97,11 @@ acceptance:
     then: "不正なルールの番号と理由を含むエラーを出力し、終了コード2を返す（misc を指定したルールはエラーにしない）"
     priority: must
     verify: test
-    status: pending
-    attempts: 0
+    status: fail
+    attempts: 1
+    verified_at: 2026-09-24
+    note: 終了コード2とルール番号(rules[0]/rules.0.glob)はアサートしているが、thenの『理由』(未知のcategory/空glob)をstderrで検証していない。手動実行では理由は出力されているがテスト未検証
+    evidence: tests/test_efficiency.py:145
 
   - id: AC-111
     kind: functional
@@ -95,8 +110,11 @@ acceptance:
     then: "LLM に画像を1枚も送信せず、PNG は quality: none、PDF は quality: text として抽出結果を保存する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: Pipeline.cmd_plan(Options既定images=None、CLIも無指定時None を渡す src/dn/cli.py:300)で submit_vision/画像ブロック0件、PNG quality none、PDF quality text をアサート。CLI既定の配線は tests/test_scan_extract.py:323 でも確認。テスト通過
+    evidence: tests/test_efficiency.py:150
 
   - id: AC-112
     kind: functional
@@ -105,8 +123,11 @@ acceptance:
     then: "推定コストに vision 呼び出し分を含まない（`--images` 付きの推定より小さい値を返す）"
     priority: should
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 実CLI dn status --json で既定の cost_usd/input_tokens が --images 付きより小さいことをアサート。テスト通過
+    evidence: tests/test_efficiency.py:170
 
   - id: AC-113
     kind: functional
@@ -115,8 +136,11 @@ acceptance:
     then: "LLM を呼ばずに、そのハッシュのラベルを contracts として記録する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 同一内容の2パスで分類呼び出し0件、両パスとも contracts をアサート。テスト通過
+    evidence: tests/test_efficiency.py:183
 
   - id: AC-114
     kind: functional
@@ -125,8 +149,11 @@ acceptance:
     then: "新しいルールに一致するファイルのラベルを LLM 呼び出しなしで contracts に更新し、分類の LLM 呼び出しは0件になる"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: cmd_run(CLI run の実体)2回目で分類呼び出し0件、nda.txt が meetings→contracts に更新、他ファイルは維持をアサート。テスト通過
+    evidence: tests/test_efficiency.py:195
 
   - id: AC-115
     kind: functional
@@ -135,8 +162,11 @@ acceptance:
     then: "完了した2バッチの20件は再送せず、残り10件だけを分類して30件すべてのラベルを記録する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: concurrency 1(config指定)で3回目バッチ中断→完了20件、再実行で送信10件・完了分のパス非送信・30件記録をアサート。テスト通過
+    evidence: tests/test_efficiency.py:213
 
   - id: AC-116
     kind: functional
@@ -145,8 +175,11 @@ acceptance:
     then: "その1件を errors.jsonl に記録し、残りのファイルのラベルは labels.jsonl に記録する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: バッチ不正→単体フォールバック、d1のみ2回以上スキーマ違反→errors.jsonlに(d1.md,classify)のみ、d0/d2はラベル記録をアサート。テスト通過
+    evidence: tests/test_efficiency.py:240
 
   - id: AC-117
     kind: functional
@@ -155,5 +188,8 @@ acceptance:
     then: "0.9 と 0.6 のファイルは LLM の返したカテゴリ、0.4 のファイルは misc として labels.jsonl に記録する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 1バッチ呼び出しで0.9/0.6/0.4→contracts/specs/misc をアサート。テスト通過
+    evidence: tests/test_efficiency.py:259

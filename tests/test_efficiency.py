@@ -112,9 +112,7 @@ def test_invalid_batch_falls_back_to_single(target: Path):
 
 def test_rules_skip_llm(target: Path):
     """AC-109: a config rule and the default *.log rule label files without any LLM call."""
-    config = (
-        'rules:\n  - glob: "docs/legal/**"\n    category: contracts\n  - glob: "*.log"\n    category: misc\n'
-    )
+    config = 'rules:\n  - glob: "docs/legal/**"\n    category: contracts\n'  # *.log comes from the defaults
     ws, entries = _prepared(target, {"docs/legal/nda.txt": "legal text", "logs/app.log": "INFO ok\n"}, config)
     client = _classify(ws, entries, batch_aware(smart_handler()))
     assert _classify_calls(client) == []
@@ -125,24 +123,26 @@ def test_rules_skip_llm(target: Path):
     # the built-in default rule set also contains *.log -> misc
     from dn.config import Config
 
-    assert [(r.glob, r.category) for r in Config().rules] == [("*.log", "misc")]
+    assert [(r.glob, r.category) for r in Config().effective_rules] == [("*.log", "misc")]
 
 
 @pytest.mark.parametrize(
     ("rules", "expected"),
     [
-        ('  - glob: "a/**"\n    category: nope\n', "rules[0]"),
-        ('  - glob: ""\n    category: misc\n', "rules.0.glob"),
+        ('  - glob: "a/**"\n    category: nope\n', ("rules[0]", "'nope' is not in taxonomy.yaml")),
+        ('  - glob: ""\n    category: misc\n', ("rules.0.glob", "at least 1 character")),
     ],
 )
-def test_invalid_rules_exit_2(target: Path, rules: str, expected: str):
+def test_invalid_rules_exit_2(target: Path, rules: str, expected: tuple[str, str]):
     """AC-110: a rule with an unknown category or an empty glob -> error naming the rule, exit 2; misc is valid."""
     with_taxonomy(target)
     write(target, "a.md", "# specs\n")
     write(target, ".dn/config.yaml", "rules:\n" + rules)
     p = run_dn("plan", str(target), "--dry-llm")
     assert p.returncode == 2
-    assert expected in p.stderr
+    where, reason = expected
+    assert where in p.stderr  # which rule
+    assert reason in p.stderr  # why it is invalid
     write(target, ".dn/config.yaml", 'rules:\n  - glob: "a/**"\n    category: misc\n')
     assert run_dn("plan", str(target), "--dry-llm").returncode == 0
 

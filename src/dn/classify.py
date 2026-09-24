@@ -121,7 +121,7 @@ class _Item:
 def _rule_specs(ws: Workspace) -> list[tuple[str, str, pathspec.PathSpec]]:  # type: ignore[type-arg]
     """(glob, category, matcher) for every usable rule, in config order."""
     specs = []
-    for r in ws.config.rules:
+    for r in ws.config.effective_rules:
         if r.category != "misc" and (ws.taxonomy is None or ws.taxonomy.get(r.category) is None):
             continue  # reported by check_rules()
         specs.append((r.glob, r.category, gitignore_spec([r.glob])))
