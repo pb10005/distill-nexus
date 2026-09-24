@@ -4,7 +4,8 @@ id: FEAT-003
 title: "Distill Nexus LLM 呼び出し層（構造化出力・リトライ・キャッシュ・コスト制御）"
 status: frozen
 
-intent: "全フェーズのLLM呼び出しを1か所に集約し、スキーマ強制・再試行・キャッシュ・コスト上限・APIを使わないテスト経路を保証することで、再実行してもコストが増えず、結果が再現できるようにする。"
+intent: "全フェーズのLLM呼び出しを1か所に集約し、スキーマ強制・再試行・キャッシュ・コスト上限・APIを使わないテスト経路を保証することで、再実行\
+  してもコストが増えず、結果が再現できるようにする。"
 
 out_of_scope:
   - "Anthropic 以外のLLMプロバイダ（OpenAI, Bedrock, Vertex）への対応"
@@ -14,23 +15,30 @@ out_of_scope:
 
 assumptions:
   - id: AS-009
-    statement: "並列呼び出しは anthropic SDK の AsyncAnthropic（httpx ベース）と asyncio.Semaphore で行う。SDK 内蔵のリトライは max_retries=0 で無効化し、dn 側で 429/529/5xx/接続エラーのみ最大5回、基底1秒の指数バックオフで再試行する"
+    statement: "並列呼び出しは anthropic SDK の AsyncAnthropic（httpx ベース）と asyncio.Semaphore
+      で行う。SDK 内蔵のリトライは max_retries=0 で無効化し、dn 側で
+      429/529/5xx/接続エラーのみ最大5回、基底1秒の指数バックオフで再試行する"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-010
-    statement: "録画再生モード（DN_LLM_REPLAY=1）の録画キーはLLMキャッシュキーと同じ値とし、`tests/fixtures/llm/<key>.json` に応答JSONを置く。DN_LLM_RECORD=1 のときは実呼び出し結果を同じ場所へ保存する"
+    statement: "録画再生モード（DN_LLM_REPLAY=1）の録画キーはLLMキャッシュキーと同じ値とし、`tests/fixtures/llm/\
+      <key>.json` に応答JSONを置く。DN_LLM_RECORD=1 のときは実呼び出し結果を同じ場所へ保存する"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-011
-    statement: "単価（USD / 100万トークン）は sonnet 入力3・出力15、opus 入力15・出力75、haiku 入力1・出力5 を既定表として持つ。出力トークンの事前見積りはフェーズごとの max_tokens の 30% とする"
+    statement: "単価（USD / 100万トークン）は sonnet 入力3・出力15、opus 入力15・出力75、haiku 入力1・出力5
+      を既定表として持つ。出力トークンの事前見積りはフェーズごとの max_tokens の 30% とする"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
 
   - id: AS-023
-    statement: "temperature=0 と強制 tool_choice（type: tool）は、それを受け付けるモデル（claude-*-4-6 以前の4系、haiku-4-5）にのみ送る。temperature を拒否するモデル（opus-4-7 以降、sonnet-5、opus-5 系、fable 系）では temperature を省略し、強制 tool_choice を拒否するモデル（opus-5-5、fable-5-1）では tool_choice auto とツール使用を指示する system 文で代替する"
+    statement: "temperature=0 と強制 tool_choice（type: tool）は、それを受け付けるモデル（claude-*-4-6
+      以前の4系、haiku-4-5）にのみ送る。temperature を拒否するモデル（opus-4-7 以降、sonnet-5、opus-5
+      系、fable 系）では temperature を省略し、強制 tool_choice
+      を拒否するモデル（opus-5-5、fable-5-1）では tool_choice auto とツール使用を指示する system 文で代替する"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -45,8 +53,12 @@ acceptance:
     then: "2回目の呼び出しに1回目の検証エラー内容を含め、2回目の検証済み結果を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 2回目リクエスト本文に検証エラー(failed
+      validation/confidence)を含むこと、呼び出し2回、2回目の結果(0.8)を返すことを検証。pytest 16 passed
+    evidence: tests/test_llm.py:47
 
   - id: AC-029
     kind: functional
@@ -55,8 +67,11 @@ acceptance:
     then: "そのファイルを `errors.jsonl` に記録し、3回目の呼び出しをしない"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: API呼び出し2回(3回目なし)、failed=1、errors.jsonl に path=a.md/phase=classify を検証
+    evidence: tests/test_llm.py:59
 
   - id: AC-030
     kind: functional
@@ -65,8 +80,11 @@ acceptance:
     then: "指数バックオフで再試行し、合計5回の再試行（API呼び出し6回）の後に例外を送出して失敗を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 429/529/500/接続エラーの4ケースで呼び出し6回、遅延[1,2,4,8,16]、LLMCallError送出を検証
+    evidence: tests/test_llm.py:76
 
   - id: AC-031
     kind: functional
@@ -75,8 +93,11 @@ acceptance:
     then: "再試行しない（API呼び出し回数1回で失敗を送出する）"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 400で LLMCallError、呼び出し1回を検証
+    evidence: tests/test_llm.py:94
 
   - id: AC-032
     kind: functional
@@ -85,8 +106,11 @@ acceptance:
     then: "前者は API を呼ばずキャッシュ結果を返す。後者は API を呼び出した結果を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 同一条件の再呼び出しでAPI回数1のまま同結果、プロンプト変更でAPI回数2かつ結果返却を検証
+    evidence: tests/test_llm.py:103
 
   - id: AC-033
     kind: functional
@@ -95,8 +119,13 @@ acceptance:
     then: "API を呼ばず、各スキーマの検証を通るダミー結果を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: dry-llm で API を爆発させるクライアントのまま run が exit 0(=検証エラー0件)、api_calls=0、INDEX.md
+      生成を検証。distill 実行自体の明示アサーションは無い(手動プローブで distilled=1
+      を確認)。後半ループはテスト側ダミーのため根拠にしていない
+    evidence: tests/test_llm.py:124
 
   - id: AC-034
     kind: functional
@@ -105,8 +134,11 @@ acceptance:
     then: "前者は録画内容を返し、後者は録画キーを含むエラーを送出する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 録画ありは録画内容(title=Recorded)を返し、録画なしは LLMReplayMissing でメッセージにキャッシュキーを含むことを検証
+    evidence: tests/test_llm.py:153
 
   - id: AC-035
     kind: functional
@@ -115,8 +147,11 @@ acceptance:
     then: "英語は 4,000 トークン、日本語は 6,667 トークン（±1）を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 英語10000字→4000、日本語10000字→6667±1を検証
+    evidence: tests/test_llm.py:178
 
   - id: AC-036
     kind: functional
@@ -125,8 +160,11 @@ acceptance:
     then: "LLM を1回も呼ばずに停止し、終了コード4を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: plan/run 両方で exit 4、max-cost エラー、replay+空録画下で LLM キャッシュ未生成(=LLM未呼出)を検証
+    evidence: tests/test_llm.py:186
 
   - id: AC-037
     kind: functional
@@ -135,8 +173,12 @@ acceptance:
     then: "入力・出力・キャッシュ読込トークン数と概算コスト USD を記録している"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: .dn/logs/<run_id>.json に input/output tokens 値、cache_read_input_tokens
+      キー、cost_usd>0 を検証
+    evidence: tests/test_llm.py:207
 
   - id: AC-038
     kind: functional
@@ -145,15 +187,25 @@ acceptance:
     then: "リクエスト本文に対象ディレクトリの絶対パスと OS ユーザー名が出現しない（送信しない）"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 全リクエスト本文に対象ディレクトリ絶対パス(str/posix)と OS ユーザー名(語境界)が無いことを検証。ホーム配下は tmp
+      配下の擬似パスで代替
+    evidence: tests/test_llm.py:222
 
   - id: AC-039
     kind: functional
     given: "既定モデル claude-sonnet-4-6 での任意のフェーズの LLM 呼び出し"
     when: "API リクエストを組み立てる"
-    then: "temperature 0、フェーズ別 max_tokens（分類1000・抽出4000・統合8000）、system への cache_control ephemeral、tool_choice によるツール指定を含む"
+    then: "temperature 0、フェーズ別 max_tokens（分類1000・抽出4000・統合8000）、system への
+      cache_control ephemeral、tool_choice によるツール指定を含む"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: classify/distill/topic_doc の max_tokens 1000/4000/8000、全ツールで
+      model=sonnet-4-6, temperature 0, system末尾 cache_control ephemeral,
+      tool_choice type tool を検証
+    evidence: tests/test_llm.py:240

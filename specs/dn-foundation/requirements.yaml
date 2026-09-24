@@ -4,32 +4,42 @@ id: FEAT-001
 title: "Distill Nexus 基盤: パッケージ雛形・設定・スキーマ・OS差分吸収"
 status: frozen
 
-intent: "Distill Nexus (dn) の全フェーズが共通に依存する土台（CLIエントリ、設定とtaxonomyの検証、LLM出力を含むpydanticスキーマ、Windows/Linux/macOSのファイル名・パス差分の吸収、危険な対象ディレクトリの拒否）を、3OSで同一コードとして提供する。"
+intent: "Distill Nexus (dn)
+  の全フェーズが共通に依存する土台（CLIエントリ、設定とtaxonomyの検証、LLM出力を含むpydanticスキーマ、Windows/Linux/ma\
+  cOSのファイル名・パス差分の吸収、危険な対象ディレクトリの拒否）を、3OSで同一コードとして提供する。"
 
 out_of_scope:
   - "GUI・Web UIの提供"
   - "クラウドストレージ（Google Drive, S3, OneDrive）との直接連携"
-  - "グローバル設定ファイル（platformdirs の user_config_dir）の読み込み。v1はプロジェクト内 .dn/config.yaml のみ読む"
+  - "グローバル設定ファイル（platformdirs の user_config_dir）の読み込み。v1はプロジェクト内 .dn/config.yaml
+    のみ読む"
   - "設定ファイルのマイグレーション機構（旧バージョン設定の自動変換）"
 
 assumptions:
   - id: AS-001
-    statement: "CLI名・作業ディレクトリ名は指示書 §1/§2 の `dn` 系に統一する。コマンドは `dn`、作業領域は `.dn/`、除外ファイルは `.dnignore`、録画再生の環境変数は `DN_LLM_REPLAY`、スキルは `.claude/skills/dn/`、プロンプト格納先は `src/dn/prompts/`。指示書の後半に残る `korg` / `.korg/` / `KORG_LLM_REPLAY` は改名前の表記として扱い、実装しない"
+    statement: "CLI名・作業ディレクトリ名は指示書 §1/§2 の `dn` 系に統一する。コマンドは `dn`、作業領域は
+      `.dn/`、除外ファイルは `.dnignore`、録画再生の環境変数は `DN_LLM_REPLAY`、スキルは
+      `.claude/skills/dn/`、プロンプト格納先は `src/dn/prompts/`。指示書の後半に残る `korg` /
+      `.korg/` / `KORG_LLM_REPLAY` は改名前の表記として扱い、実装しない"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-002
-    statement: "配布パッケージ名は `distill-nexus`、importパッケージ名は `dn`、src レイアウト（`src/dn/`）とする。`uv tool install .` で `dn` コマンドが入る"
+    statement: "配布パッケージ名は `distill-nexus`、importパッケージ名は `dn`、src
+      レイアウト（`src/dn/`）とする。`uv tool install .` で `dn` コマンドが入る"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-003
-    statement: "モデル既定値は指示書どおり model=`claude-sonnet-4-6`、synth_model 未指定時は model と同じ値を使う。`.dn/config.yaml` の雛形には synth_model: `claude-opus-4-1` を記載する。単価表はモデル名の接頭辞で引き、未知モデルは sonnet 単価で見積もる"
+    statement: "モデル既定値は指示書どおり model=`claude-sonnet-4-6`、synth_model 未指定時は model
+      と同じ値を使う。`.dn/config.yaml` の雛形には synth_model: `claude-opus-4-1`
+      を記載する。単価表はモデル名の接頭辞で引き、未知モデルは sonnet 単価で見積もる"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-004
-    statement: "Windows のパス長上限は 260 文字、POSIX のファイル名長上限は 255 バイトとして扱う。`long_path()` は Windows でのみ `\\\\?\\` を付与し、他OSでは入力をそのまま返す。切り詰め後の上限はファイル名 200 文字"
+    statement: "Windows のパス長上限は 260 文字、POSIX のファイル名長上限は 255 バイトとして扱う。`long_path()` は
+      Windows でのみ `\\\\?\\` を付与し、他OSでは入力をそのまま返す。切り詰め後の上限はファイル名 200 文字"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -50,8 +60,11 @@ acceptance:
     then: "パッケージのバージョン文字列を標準出力に出力し、終了コード0を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: stdout == dn.__version__ かつ rc 0 を検証。pytest 37 passed
+    evidence: tests/test_foundation.py:20
 
   - id: AC-002
     kind: functional
@@ -60,8 +73,11 @@ acceptance:
     then: "`.dn/config.yaml` と `taxonomy.yaml` の雛形ファイルを生成する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: config.yaml と taxonomy.yaml の生成と雛形内容を検証
+    evidence: tests/test_foundation.py:27
 
   - id: AC-003
     kind: functional
@@ -70,18 +86,26 @@ acceptance:
     then: "既存ファイルの内容は変わらない"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 再 init 後に両ファイルの内容がバイト単位で不変であることを検証
+    evidence: tests/test_foundation.py:37
 
   - id: AC-004
     kind: functional
-    given: "`.dn/config.yaml` に不正な値（concurrency: 0、confidence_threshold: 1.5、未知の dedupe 値のいずれか）が書かれた対象ディレクトリ"
+    given: "`.dn/config.yaml` に不正な値（concurrency: 0、confidence_threshold: 1.5、未知の
+      dedupe 値のいずれか）が書かれた対象ディレクトリ"
     when: "任意のサブコマンドを実行する"
     then: "不正なキー名を含むエラーメッセージを出力し、終了コード2を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: concurrency 0 / confidence_threshold 1.5 / 未知の dedupe の3件すべてで rc 2 と
+      stderr のキー名を検証（サブコマンドは scan で代表させている）
+    evidence: tests/test_foundation.py:46
 
   - id: AC-005
     kind: functional
@@ -90,18 +114,25 @@ acceptance:
     then: "検証エラーとして拒否し、終了コード2を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: slug 空と slug 重複の両方で rc 2 と taxonomy.yaml エラーを検証
+    evidence: tests/test_foundation.py:63
 
   - id: AC-006
     kind: functional
-    given: "Windows 予約名（CON, PRN, AUX, NUL, COM1-9, LPT1-9。大文字小文字・拡張子の有無を問わない）、または末尾がドット・空白の名前"
+    given: "Windows 予約名（CON, PRN, AUX, NUL, COM1-9,
+      LPT1-9。大文字小文字・拡張子の有無を問わない）、または末尾がドット・空白の名前"
     when: "`safe_name()` に渡す"
     then: "予約名には `_` を付与した名前を返し、末尾のドット・空白を除去した名前を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 予約名 CON/con.txt/Com1.log/LPT9/nul に _ 付与、末尾ドット・空白の除去、CONSOLE の否定ケースを検証
+    evidence: tests/test_foundation.py:76
 
   - id: AC-104
     kind: functional
@@ -110,8 +141,11 @@ acceptance:
     then: "空でない代替名 `_` を返す（`..` や `.` を返さない）"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: .. . 空文字 禁止文字のみ ... のすべてで _ を返すことを検証
+    evidence: tests/test_foundation.py:100
 
   - id: AC-007
     kind: functional
@@ -120,8 +154,11 @@ acceptance:
     then: "これらの文字をすべて除去した名前を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: <>:"/\|?* と制御文字 \x00 \x1f \t の除去を検証
+    evidence: tests/test_foundation.py:94
 
   - id: AC-008
     kind: functional
@@ -130,8 +167,11 @@ acceptance:
     then: "拡張子を保持したままファイル名を切り詰め、上限以下のパスを返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: "windows: 拡張子保持かつ全長 <=259、linux: 拡張子保持かつ <=255 バイト、短い名前は不変を検証"
+    evidence: tests/test_foundation.py:106
 
   - id: AC-009
     kind: functional
@@ -140,8 +180,11 @@ acceptance:
     then: "`normalize()` は NFC 文字列を返し、`same_name()` はどちらの組でも True を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: normalize(NFD)==NFC、same_name が NFD/NFC と大文字小文字の両方で True を検証
+    evidence: tests/test_foundation.py:121
 
   - id: AC-010
     kind: functional
@@ -150,8 +193,12 @@ acceptance:
     then: "pydantic の ValidationError を送出し、不正フィールド名をエラーに含む"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: confidence 1.5 / date 2024/03/12 / summary 欠損 のすべてで ValidationError
+      とフィールド名を検証
+    evidence: tests/test_foundation.py:131
 
   - id: AC-011
     kind: functional
@@ -160,8 +207,12 @@ acceptance:
     then: "ANTHROPIC_API_KEY が無い旨のエラーを出力し、終了コード2を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: plan/distill/run で API キー未設定・replay 無し（conftest で DN_LLM_REPLAY 削除）の場合 rc
+      2 と stderr の ANTHROPIC_API_KEY を検証
+    evidence: tests/test_foundation.py:153
 
   - id: AC-012
     kind: functional
@@ -170,8 +221,12 @@ acceptance:
     then: "実行を拒否し、終了コード2を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: home は scan/plan/apply/run で rc 2 を検証（:168）、fs ルートは apply で rc 2（:185）、C:\
+      は is_dangerous_root で判定（:198）。拒否の副作用が無いことも検証
+    evidence: tests/test_foundation.py:168
 
   - id: AC-013
     kind: functional
@@ -180,5 +235,8 @@ acceptance:
     then: "True を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 先頭ドットと FILE_ATTRIBUTE_HIDDEN（windows）で True、否定ケースで False を検証
+    evidence: tests/test_foundation.py:207

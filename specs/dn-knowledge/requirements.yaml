@@ -4,7 +4,8 @@ id: FEAT-005
 title: "Distill Nexus 知識系フェーズ（distill / synthesize）"
 status: frozen
 
-intent: "抽出テキストから根拠付きの用語・エンティティ・事実を取り出して統合し、LLMのコンテキストやRAGにそのまま投入できる `_knowledge/` を毎回一貫した形で再生成する。"
+intent: "抽出テキストから根拠付きの用語・エンティティ・事実を取り出して統合し、LLMのコンテキストやRAGにそのまま投入できる
+  `_knowledge/` を毎回一貫した形で再生成する。"
 
 out_of_scope:
   - "ベクトル埋め込みの計算・ベクトルDBへの投入（chunks.jsonl の出力までを担う）"
@@ -14,22 +15,28 @@ out_of_scope:
 
 assumptions:
   - id: AS-016
-    statement: "トークン数はすべて文字数からの近似（英語 ÷2.5、日本語 ÷1.5、lang=ja のとき日本語係数）で数え、トークナイザは使わない。chunks.jsonl の tokens もこの近似値"
+    statement: "トークン数はすべて文字数からの近似（英語 ÷2.5、日本語 ÷1.5、lang=ja
+      のとき日本語係数）で数え、トークナイザは使わない。chunks.jsonl の tokens もこの近似値"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-017
-    statement: "正規化の候補ペアは difflib.SequenceMatcher の類似度 0.8 以上、または空白区切りトークンを1つ以上共有する名前の組とし、LLM が same=true と判定したものを canonical 名へ統合する"
+    statement: "正規化の候補ペアは difflib.SequenceMatcher の類似度 0.8
+      以上、または空白区切りトークンを1つ以上共有する名前の組とし、LLM が same=true と判定したものを canonical 名へ統合する"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-018
-    statement: "`<!-- manual -->` セクションは、`<!-- manual -->` から `<!-- /manual -->` までのブロックとし、再生成時は同じ slug の topics/<slug>.md の末尾に元のまま付け戻す"
+    statement: "`<!-- manual -->` セクションは、`<!-- manual -->` から `<!-- /manual -->`
+      までのブロックとし、再生成時は同じ slug の topics/<slug>.md の末尾に元のまま付け戻す"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-019
-    statement: "facts・terms の source は `整理後パス`（apply 済みなら manifest の to、未 apply なら元の相対パス）に `#<locator>` を付けた文字列とする。apply 後の再実行では organized/ 配下のパスがそのまま整理後パスになる。facts/<hash>.json はハッシュで再利用し、パスは synthesize 時に最新の inventory から付け直す"
+    statement: "facts・terms の source は `整理後パス`（apply 済みなら manifest の to、未 apply
+      なら元の相対パス）に `#<locator>` を付けた文字列とする。apply 後の再実行では organized/
+      配下のパスがそのまま整理後パスになる。facts/<hash>.json はハッシュで再利用し、パスは synthesize 時に最新の
+      inventory から付け直す"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -44,8 +51,12 @@ acceptance:
     then: "見出し単位で最大 8,000 文字のチャンクに分けて LLM に渡し、結果を `facts/<hash>.json` に保存する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 約21,000字を見出し単位で分割、各チャンク<=8000字かつ見出し開始、facts/<hash>.json の stem=ファイルhash
+      を検証。pytest PASSED
+    evidence: tests/test_knowledge.py:73
 
   - id: AC-056
     kind: functional
@@ -54,8 +65,11 @@ acceptance:
     then: "各要素が path, hash, locator を持つ source を含む"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: terms/entities/facts/relations 全要素の source.path/hash/locator を検証。PASSED
+    evidence: tests/test_knowledge.py:87
 
   - id: AC-057
     kind: functional
@@ -64,18 +78,27 @@ acceptance:
     then: "前者はそのファイルの LLM 呼び出しをしない。後者は LLM を呼び出して facts を保存する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: distill_all なしで LLM 要求0件・skipped=1、ありで要求1件・facts 1件保存を検証。CLI --distill-all
+      は src/dn/cli.py:73->pipeline.py:313 で同じ引数に配線。PASSED
+    evidence: tests/test_knowledge.py:110
 
   - id: AC-058
     kind: functional
     given: "facts/*.json が存在する状態"
     when: "synthesize を実行する"
-    then: "`_knowledge/` に INDEX.md, overview.md, glossary.md, entities.json, facts.jsonl, relations.json, chunks.jsonl, sources.md, open-questions.md, topics/*.md を生成する"
+    then: "`_knowledge/` に INDEX.md, overview.md, glossary.md, entities.json,
+      facts.jsonl, relations.json, chunks.jsonl, sources.md, open-questions.md,
+      topics/*.md を生成する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 9ファイル+topics/*.md の存在と exit 0 を検証。PASSED
+    evidence: tests/test_knowledge.py:134
 
   - id: AC-059
     kind: functional
@@ -84,8 +107,13 @@ acceptance:
     then: "glossary.md と entities.json では canonical 名1件に統合し、もう一方を aliases に含む"
     priority: must
     verify: test
-    status: pending
-    attempts: 0
+    status: fail
+    attempts: 1
+    verified_at: 2026-09-24
+    note: entities.json は canonical+aliases を厳密に検証しているが、glossary.md は行に '| API
+      gateway |' を含むことしか見ておらず、用語列が API Gateway で別名列に API gateway
+      があることを区別できない（canonical=API gateway・別名なしでも通る）。glossary 側の aliases 検証が不足
+    evidence: tests/test_knowledge.py:177
 
   - id: AC-060
     kind: functional
@@ -94,18 +122,27 @@ acceptance:
     then: "そのエンティティを `topics/general.md` に含む"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: トピック未割当の Billing service が general.md に、割当済み Order service が orders.md
+      にあることを検証。PASSED
+    evidence: tests/test_knowledge.py:180
 
   - id: AC-061
     kind: functional
     given: "トピック文書生成で LLM が入力に存在しない `[src: F-999]` を出力する"
     when: "synthesize を実行する"
-    then: "1回だけ再生成し、それでも不正な src を含む場合はその topics/<slug>.md を書き出さずに `errors.jsonl` に記録し、終了コード3を返す"
+    then: "1回だけ再生成し、それでも不正な src を含む場合はその topics/<slug>.md を書き出さずに `errors.jsonl`
+      に記録し、終了コード3を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: submit_topic_doc 呼び出しちょうど2回、再生成プロンプトに F-999、general.md
+      非出力、errors.jsonl(phase=synthesize)、exit 3 を検証。PASSED
+    evidence: tests/test_knowledge.py:205
 
   - id: AC-062
     kind: functional
@@ -114,18 +151,26 @@ acceptance:
     then: "title, aliases, sources, confidence, updated を含む"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: "全 topics/*.md の frontmatter に5キーを検証。注意: glob 空なら空振りする書き方だが同一入力で
+      general.md 生成は test_knowledge.py:320 で確認済み。PASSED"
+    evidence: tests/test_knowledge.py:219
 
   - id: AC-063
     kind: functional
     given: "約 3,000 トークン相当の見出し付き抽出テキスト"
     when: "chunks.jsonl を生成する"
-    then: "各チャンクは id, source_hash, source_path, heading_path, text, tokens を持ち、tokens は 800 以下、隣接チャンクの重なりは 800 の 15%（120トークン）±20 トークン以内"
+    then: "各チャンクは id, source_hash, source_path, heading_path, text, tokens
+      を持ち、tokens は 800 以下、隣接チャンクの重なりは 800 の 15%（120トークン）±20 トークン以内"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 約3000トークン入力で6フィールド、tokens<=800、隣接重なり 120±20（英語/日本語係数とも）とテキスト一致を検証。PASSED
+    evidence: tests/test_knowledge.py:227
 
   - id: AC-064
     kind: functional
@@ -134,28 +179,42 @@ acceptance:
     then: "open-questions.md に両方の statement と source を出力する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: open-questions.md に両 statement と両 source(spec.md#L5, meeting.md#L9)
+      を検証。PASSED
+    evidence: tests/test_knowledge.py:250
 
   - id: AC-065
     kind: functional
     given: "初回生成で INDEX+overview+glossary が index_token_budget を超える知識"
     when: "synthesize を実行する"
-    then: "glossary の全表を `topics/glossary.md` へ、overview の詳細を `topics/overview-detail.md` へ分割して INDEX.md から参照し、budget 以内に収まれば終了コード0を返す"
+    then: "glossary の全表を `topics/glossary.md` へ、overview の詳細を
+      `topics/overview-detail.md` へ分割して INDEX.md から参照し、budget 以内に収まれば終了コード0を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: split=True、topics/glossary.md と overview-detail.md 生成、INDEX
+      からのリンク、index_tokens<=1500、exit 0 を検証。PASSED
+    evidence: tests/test_knowledge.py:266
 
   - id: AC-066
     kind: functional
     given: "正常に生成された _knowledge/"
     when: "検証を実行する"
-    then: "facts.jsonl の全 source のパス部分が sources.md の表に含まれ、見出しは `###` 以下で、コードブロックの外に HTML 要素（`<!-- manual -->` / `<!-- /manual -->` コメントを除く）を含まない"
+    then: "facts.jsonl の全 source のパス部分が sources.md の表に含まれ、見出しは `###` 以下で、コードブロックの外に
+      HTML 要素（`<!-- manual -->` / `<!-- /manual -->` コメントを除く）を含まない"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: "facts.jsonl の全 source パスが sources.md に、#### が ### へ降格、コード外 HTML
+      除去・コード内保持、manual コメント許容、コード外 HTML 検出を検証。PASSED"
+    evidence: tests/test_knowledge.py:312
 
   - id: AC-067
     kind: functional
@@ -164,18 +223,26 @@ acceptance:
     then: "再生成された同じ slug の文書にそのセクションが元の文字列のまま残る"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: manual ブロックを追記後に再 synthesize し、同一文字列が general.md に残ることを検証。PASSED
+    evidence: tests/test_knowledge.py:332
 
   - id: AC-100
     kind: functional
-    given: "INDEX.md に存在しないファイルへのリンクがある、または分割後も INDEX+overview+glossary が index_token_budget を超える"
+    given: "INDEX.md に存在しないファイルへのリンクがある、または分割後も INDEX+overview+glossary が
+      index_token_budget を超える"
     when: "synthesize の検証を実行する"
     then: "失敗内容を出力し、終了コード1を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: リンク切れは validate_knowledge が検出、予算超過は synthesize 経由で DnError
+      exit_code=1・メッセージに内容。両者とも src/dn/synthesize.py:766-768 の同一 raise 経路。PASSED
+    evidence: tests/test_knowledge.py:295
 
   - id: AC-069
     kind: functional
@@ -184,5 +251,9 @@ acceptance:
     then: "アルファベット順の後に五十音順で並んだ GFM 表（用語・定義・別名・初出ソース）を出力する"
     priority: should
     verify: test
-    status: pending
-    attempts: 0
+    status: fail
+    attempts: 1
+    verified_at: 2026-09-24
+    note: 並び順（alpha,API,Zeta,あいさつ,イベントバス,さくら）と GFM 区切り行は検証済みだが、列はパイプ数で4列と数えるだけで、見出しが
+      用語・定義・別名・初出ソース であること、初出ソース列に source が入ることを検証していない
+    evidence: tests/test_knowledge.py:352
