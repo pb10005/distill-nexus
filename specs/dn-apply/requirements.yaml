@@ -42,7 +42,9 @@ assumptions:
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-035
-    statement: "apply の事前検証には指示書 §5.5 の空き容量チェック（コピー・別デバイス移動の合計サイズと移動先の空き容量）を含める。別デバイス間の移動は copy2 → サイズと全量ハッシュの一致確認 → 元の削除の順で行う"
+    statement: "apply の事前検証には指示書 §5.5
+      の空き容量チェック（コピー・別デバイス移動の合計サイズと移動先の空き容量）を含める。別デバイス間の移動は copy2 →
+      サイズと全量ハッシュの一致確認 → 元の削除の順で行う"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -127,13 +129,12 @@ acceptance:
     then: "移動を拒否し、終了コード1を返す"
     priority: must
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: live lock で apply/undo 共に exit 1 は検証済み。脱出判定は '../escaped.txt'（正規化）のみで、AC
-      が明示する『シンボリックリンク解決後』に外へ出るケース（対象内のシンボリックリンク経由で外部を指す移動先）を踏んでいない。実装は
-      src/dn/apply.py:88 で resolve() しているがテストで未検証
-    evidence: tests/test_apply.py:127
+    note: live lock で apply/undo 共に CLI exit 1、'../escaped.txt'(正規化)と organized/link
+      シンボリックリンク経由で外部を指す移動先(:131-141)の両方で CLI exit 1・外部ディレクトリ空・ツリー不変を検証。pytest 通過
+    evidence: tests/test_apply.py:112
 
   - id: AC-089
     kind: functional
@@ -158,13 +159,12 @@ acceptance:
     then: "trash した件はゴミ箱からの手動復元が必要という警告とパス一覧を出力してスキップし、他の件を元の位置へ戻し、終了コード3を返す"
     priority: must
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: exit_code=3・restored=3・u.trashed
-      のパスを検証しているが、『ゴミ箱からの手動復元が必要』という警告の出力を一切アサートしていない（stderr/ログ未検証）。then
-      の警告出力部分が未検証
-    evidence: tests/test_apply.py:166
+    note: dedupe trash の run を CLI undo し、exit 3・stderr
+      に手動復元が必要との警告とtrash済みパス・他ファイルの元位置復元を検証。pytest 通過
+    evidence: tests/test_apply.py:177
 
   - id: AC-091
     kind: functional
@@ -173,12 +173,12 @@ acceptance:
     then: "ハッシュが一致するコピーだけを削除し、元ファイルは内容・mtime とも変わらない"
     priority: must
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: 一致コピー3件の削除と元ファイルの内容/mtime
-      不変は検証済み。だが『ハッシュが一致するコピーだけ』を削除する境界（改変されたコピーは残す）を踏むケースが無い
-    evidence: tests/test_apply.py:183
+    note: 一致コピー3件の削除(:196)に加え、改変コピーは残し他2件のみ削除・元ファイルの内容/mtime 不変(tree_state)を CLI
+      undo で検証(:210-222)。pytest 通過
+    evidence: tests/test_apply.py:210
 
   - id: AC-092
     kind: functional

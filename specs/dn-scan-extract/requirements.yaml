@@ -47,12 +47,24 @@ assumptions:
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-032
-    statement: "コードの抽出結果には指示書 §5.2（先頭200行 + docstring/コメント + 関数・クラス名一覧）に従いコメント行も最大300件含める。docstring と定義名は正規表現で拾い、構文木（ast / tree-sitter）は使わない"
+    statement: "コードの抽出結果には指示書 §5.2（先頭200行 + docstring/コメント +
+      関数・クラス名一覧）に従いコメント行も最大300件含める。docstring と定義名は正規表現で拾い、構文木（ast /
+      tree-sitter）は使わない"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
 
-open_questions: []
+open_questions:
+  - id: OQ-001
+    from: AC-024
+    question: "2回の修正で AC-024 が満たせない。受入基準自体が誤っている / 前提が欠けている可能性がある。最新の失敗: 前者(画像送信:
+      image ブロック/media_type/データ一致、文字起こし保存)と、Options(no_images=True) を直接与えた
+      Pipeline での画像非送信は検証済み。ただし when の --no-images は依然 CLI フラグ経由で挙動を確認していない:
+      :257 の run_dn('plan', --no-images, --dry-llm) は returncode==0
+      しか見ておらず、フラグ無しでも rc=0 になる（手動確認）ため判別力が無い。src/dn/cli.py:286 の
+      no_images=no_images を削っても本テストは通る"
+    raised: 2026-09-24
+    status: open
 
 acceptance:
   - id: AC-014
@@ -93,13 +105,12 @@ acceptance:
       full）を記録する"
     priority: must
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: 同一ハッシュ・duplicates 出力・hash_mode は検証済み。ただし then が指定する blake2b
-      アルゴリズムはどこにもアサートされていない（等値比較だけなら任意のハッシュで通る）。例えば digest を hashlib.blake2b
-      の期待値と照合するアサーションが必要
-    evidence: tests/test_scan_extract.py:81
+    note: CLI scan --json 経由で同一ハッシュ・duplicates 出力・hash_mode(full)
+      を検証し、hashlib.blake2b(digest_size=20) の期待値と digest を照合(:106-108)。pytest 通過
+    evidence: tests/test_scan_extract.py:94
 
   - id: AC-017
     kind: functional
@@ -204,13 +215,15 @@ acceptance:
     then: "前者は LLM に画像を送信し、応答の文字起こしを本文として保存する。後者は LLM に画像を送信しない"
     priority: must
     verify: test
-    status: fail
-    attempts: 1
+    status: blocked
+    attempts: 2
     verified_at: 2026-09-24
-    note: リクエスト件数（1回と0回）と文字起こしの保存は検証済み。ただし LLM に送った内容が画像であること（image
-      ブロック/media_type）をアサートしていない。when の --no-images は CLI フラグではなく
-      want_images=False で呼んでおり、フラグから挙動までの経路は未検証（配線は src/dn/pipeline.py:144 にある）
-    evidence: tests/test_scan_extract.py:214
+    note: "前者(画像送信: image ブロック/media_type/データ一致、文字起こし保存)と、Options(no_images=True)
+      を直接与えた Pipeline での画像非送信は検証済み。ただし when の --no-images は依然 CLI
+      フラグ経由で挙動を確認していない: :257 の run_dn('plan', --no-images, --dry-llm) は
+      returncode==0 しか見ておらず、フラグ無しでも rc=0 になる（手動確認）ため判別力が無い。src/dn/cli.py:286 の
+      no_images=no_images を削っても本テストは通る"
+    evidence: tests/test_scan_extract.py:257
 
   - id: AC-025
     kind: functional

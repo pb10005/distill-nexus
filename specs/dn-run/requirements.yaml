@@ -26,12 +26,16 @@ assumptions:
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-034
-    statement: "Ctrl-C（KeyboardInterrupt）で中断した場合の終了コードは 130（シェル慣例）とし、AS-024 の 0〜4 の体系の外に置く"
+    statement: "Ctrl-C（KeyboardInterrupt）で中断した場合の終了コードは 130（シェル慣例）とし、AS-024 の 0〜4
+      の体系の外に置く"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-037
-    statement: "指示書 §7 の共通オプションのうち AC を持たないもの（--lang、--include-hidden、--follow-symlinks、--full-hash、-v/-vv、--no-color、export の --output）は指示書どおりに実装する。--lang は LLM への出力言語指示と _knowledge/ の見出し語（日本語/英語）を切り替える。auto はソースの文字数で多い言語"
+    statement: "指示書 §7 の共通オプションのうち AC
+      を持たないもの（--lang、--include-hidden、--follow-symlinks、--full-hash、-v/-vv、--no\
+      -color、export の --output）は指示書どおりに実装する。--lang は LLM への出力言語指示と _knowledge/
+      の見出し語（日本語/英語）を切り替える。auto はソースの文字数で多い言語"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -118,14 +122,13 @@ acceptance:
     then: "残りのファイルの処理を完了し、終了コード3を返す"
     priority: must
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: then前半『残りのファイルの処理を完了』が未検証。テストは exit
-      3・extract.failed==1・INDEX.md存在のみを見ており、INDEX.md
-      は正常ファイルの有無に関係なく生成されうる。good.md が extract/classify/distill/plan
-      まで処理されたことのアサーションが無い（手動実行では classify.classified==1 等を確認できたが、テストの証拠にはならない）
-    evidence: tests/test_run.py:146
+    note: CLI run で exit 3・extract.failed==1 に加え、good.md が
+      classify(classified==1)/plan(entries)/distill(distilled==1)/sources.md
+      まで処理されたことを検証。pytest 通過
+    evidence: tests/test_run.py:140
 
   - id: AC-076
     kind: functional
@@ -149,15 +152,13 @@ acceptance:
     then: "標準出力は単一の JSON ドキュメントとして parse でき、進捗表示は標準エラーに出力する"
     priority: must
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: "(1)実装: dn init は DnError 時に --json でも stdout に何も書かない（init <存在しないdir>
-      --json で stdout 空・rc=2、JSON parse 不可）。cli.py の init は共通ランナーを通らず error JSON
-      を出さない。(2)テスト: tests/test_run.py:163 の parametrize は
-      scan/plan/run/status/undo/init のみで apply・distill・export を含まず、進捗の stderr
-      出力は plan/run でしか確認していない(:172-173)"
-    evidence: src/dn/cli.py:201
+    note: "init/scan/plan/apply/undo/distill/run/status/export の全9サブコマンド + init
+      エラー時を --json で実行し、stdout が単一 JSON(1行)として parse でき、plan/run/distill の進捗が
+      stderr のみに出ることを検証。init エラー時も error JSON・rc2。pytest 通過"
+    evidence: tests/test_run.py:196
 
   - id: AC-078
     kind: functional
@@ -166,14 +167,12 @@ acceptance:
     then: "どのファイルも移動せず、終了コード1を返す"
     priority: must
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: 確認プロンプトへの n 入力を検証していない。テストは Options.confirm に False
-      を返すラムダを注入しており、実際のプロンプト経路（src/dn/pipeline.py:197 の input() と y/yes
-      判定）を通らない。終了コードも DnError.exit_code==1 の確認のみでプロセス終了コードは未確認。isatty と input
-      を差し替えて n を与える、等の検証が必要
-    evidence: tests/test_run.py:188
+    note: pty 上で実 CLI dn apply を起動し [y/N] プロンプトに n を入力、プロセス終了コード1・ツリー不変・manifest
+      非作成を検証(:222-242)。pytest 通過(Linux)
+    evidence: tests/test_run.py:222
 
   - id: AC-079
     kind: functional
@@ -182,13 +181,12 @@ acceptance:
     then: "`.dn/logs/<run_id>.log` にログを保存する"
     priority: should
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: "(1)実装: dn init は Workspace.setup_logging を呼ばず .dn/logs/<run_id>.log
-      を作らない（手動実行で init 後に .dn/logs が存在しないことを確認）。(2)テスト: tests/test_run.py:198 は
-      scan 1コマンドのみで『任意のサブコマンド』を検証していない"
-    evidence: src/dn/cli.py:201
+    note: "全9サブコマンドの CLI 実行それぞれで .dn/logs/<run_id>.log の存在と出力 log パス一致を検証(init
+      含む)。pytest 通過"
+    evidence: tests/test_run.py:253
 
   - id: AC-068
     kind: functional
@@ -197,14 +195,12 @@ acceptance:
     then: "それぞれ全ファイルを連結した単一の .md、1行1ファイルの .jsonl、_knowledge/ 全体の .zip を生成する"
     priority: must
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: "md形式の『全ファイルを連結』が未検証。テストは各ファイルの 'file: <path>'
-      見出しの存在と順序のみを確認し(:213-214)、各ファイル本文が .md
-      に含まれることをアサーションしていない（見出しだけ出力する実装でも通る）。jsonl(1行1ファイル, :217)と
-      zip(:220)は検証済み。jsonl の content も未確認"
-    evidence: tests/test_run.py:213
+    note: "CLI export md は全ファイル本文が単一 .md に含まれること、jsonl は1行1ファイルで content 一致、zip は
+      _knowledge/ 全ファイルのバイト一致を検証。pytest 通過"
+    evidence: tests/test_run.py:265
 
   - id: AC-101
     kind: functional

@@ -41,7 +41,8 @@ assumptions:
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-036
-    statement: "open-questions.md には矛盾する facts（AC-064）に加え、distill で LLM が questions として挙げた欠落・曖昧な情報を source 付きで載せる（指示書 §4「ソース間の矛盾・欠落情報」、§6.3）"
+    statement: "open-questions.md には矛盾する facts（AC-064）に加え、distill で LLM が questions
+      として挙げた欠落・曖昧な情報を source 付きで載せる（指示書 §4「ソース間の矛盾・欠落情報」、§6.3）"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -112,13 +113,12 @@ acceptance:
     then: "glossary.md と entities.json では canonical 名1件に統合し、もう一方を aliases に含む"
     priority: must
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: entities.json は canonical+aliases を厳密に検証しているが、glossary.md は行に '| API
-      gateway |' を含むことしか見ておらず、用語列が API Gateway で別名列に API gateway
-      があることを区別できない（canonical=API gateway・別名なしでも通る）。glossary 側の aliases 検証が不足
-    evidence: tests/test_knowledge.py:177
+    note: entities.json の canonical+aliases に加え、glossary.md の API 行が1件で用語列=API
+      Gateway・別名列=API gateway であることを列単位で検証(:176-183)。pytest 通過
+    evidence: tests/test_knowledge.py:154
 
   - id: AC-060
     kind: functional
@@ -256,9 +256,9 @@ acceptance:
     then: "アルファベット順の後に五十音順で並んだ GFM 表（用語・定義・別名・初出ソース）を出力する"
     priority: should
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: 並び順（alpha,API,Zeta,あいさつ,イベントバス,さくら）と GFM 区切り行は検証済みだが、列はパイプ数で4列と数えるだけで、見出しが
-      用語・定義・別名・初出ソース であること、初出ソース列に source が入ることを検証していない
-    evidence: tests/test_knowledge.py:352
+    note: 並び順(alpha,API,Zeta,あいさつ,イベントバス,さくら)・GFM 区切り行・見出し[用語,定義,別名,初出ソース]・行内容(初出ソース
+      a.md#L1)を検証。pytest 通過
+    evidence: tests/test_knowledge.py:347
