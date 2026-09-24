@@ -4,8 +4,7 @@ id: FEAT-004
 title: "Distill Nexus 分類・計画フェーズ（classify / propose-taxonomy / plan）"
 status: frozen
 
-intent: "抽出済みテキストを LLM
-  で分類し、元ファイルに一切触れないドライランの移動計画（plan.json）を作って、人間やエージェントが実行前に確認できるようにする。"
+intent: "抽出済みテキストを LLM で分類し、元ファイルに一切触れないドライランの移動計画（plan.json）を作って、人間やエージェントが実行前に確認できるようにする。"
 
 out_of_scope:
   - "元ファイルの内容の書き換え・完全削除（重複は _duplicates/ かOSのゴミ箱へ送るのみ）"
@@ -14,34 +13,32 @@ out_of_scope:
 
 assumptions:
   - id: AS-012
-    statement: "`--propose-taxonomy` は既存の `taxonomy.yaml`
-      を上書きせず、`.dn/taxonomy.proposed.yaml` に書き出す。ユーザーが内容を確認して `taxonomy.yaml`
-      へ移す。taxonomy.yaml が無い状態で plan を実行した場合は提案を生成して停止し、終了コード0を返す"
+    statement: "`--propose-taxonomy` は既存の `taxonomy.yaml` を上書きせず、`.dn/taxonomy.proposed.yaml` に書き出す。ユーザーが内容を確認して `taxonomy.yaml` へ移す。taxonomy.yaml が無い状態で plan または run を実行した場合は提案を生成して停止し、終了コード0を返す"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-013
-    statement: "年フォルダは classify の date（文書内の日付）から取った年を使い、date が null ならファイル mtime
-      は使わず年フォルダを作らない"
+    statement: "年フォルダは classify の date（文書内の日付）から取った年を使い、date が null ならファイル mtime は使わず年フォルダを作らない"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-014
-    statement: "`--interactive` の確認は低信頼度（confidence < 閾値）のファイルに対してのみ行い、Enter で misc
-      維持、カテゴリ slug 入力でそのカテゴリへ変更する。`--json` と同時指定された場合は確認を行わない"
+    statement: "`--interactive` の確認は低信頼度（confidence < 閾値）のファイルに対してのみ行い、Enter で misc 維持、カテゴリ slug 入力でそのカテゴリへ変更する。`--json` と同時指定された場合は確認を行わない"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-026
-    statement: "subcategory は taxonomy の該当カテゴリの subcategories に含まれる slug
-      のときだけ採用し、それ以外（taxonomy に無い値、`..` やパス区切りを含む値）は捨てて subcategory なしとして扱う"
+    statement: "subcategory は taxonomy の該当カテゴリの subcategories に含まれる slug のときだけ採用し、それ以外（taxonomy に無い値、`..` やパス区切りを含む値）は捨てて subcategory なしとして扱う"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-027
-    statement: "`--rename` の slug はタイトルを NFKC
-      正規化して英数字以外をハイフンにし小文字化したものとする。日本語は英小文字ケバブにできないため、Unicode
-      の文字（\\w）はそのまま残す。結果が空なら元ファイル名の stem を同様に slug 化し、それも空なら `file` を使う"
+    statement: "`--rename` の slug はタイトルを NFKC 正規化して英数字以外をハイフンにし小文字化したものとする。日本語は英小文字ケバブにできないため、Unicode の文字（\\w）はそのまま残す。結果が空なら元ファイル名の stem を同様に slug 化し、それも空なら `file` を使う"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-033
+    statement: "labels.jsonl のラベルは taxonomy.yaml の内容ハッシュと紐づけ、taxonomy を変更したら全ファイルを再分類する。--propose-taxonomy の前段は taxonomy 無しで全件を分類して要約とタグを作り、提案呼び出しには最大500件を固定シードで無作為抽出して渡す"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -51,18 +48,15 @@ open_questions: []
 acceptance:
   - id: AC-040
     kind: functional
-    given: "taxonomy に contracts / specs を持ち、LLM が confidence 0.9 で contracts、0.6 で
-      specs、0.4 で specs を返す3ファイル（閾値 0.6）"
+    given: "taxonomy に contracts / specs を持ち、LLM が confidence 0.9 で contracts、0.6 で specs、0.4 で specs を返す3ファイル（閾値 0.6）"
     when: "classify を実行する"
-    then: "confidence 0.9 と 0.6（閾値ちょうど）のファイルは LLM の返したカテゴリ、0.4 のファイルは misc として
-      `labels.jsonl` に記録する"
+    then: "confidence 0.9 と 0.6（閾値ちょうど）のファイルは LLM の返したカテゴリ、0.4 のファイルは misc として `labels.jsonl` に記録する"
     priority: must
     verify: test
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: labels.jsonl 上で 0.9→contracts、0.6(閾値ちょうど)→specs、0.4→misc を検証。pytest 13
-      passed
+    note: labels.jsonl 上で 0.9→contracts、0.6(閾値ちょうど)→specs、0.4→misc を検証。pytest 13 passed
     evidence: tests/test_organize.py:60
 
   - id: AC-041
@@ -75,8 +69,7 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: "enum が slug 全件+misc と完全一致することを検証(classify は tax.slugs を渡す:
-      src/dn/classify.py:104,138)"
+    note: "enum が slug 全件+misc と完全一致することを検証(classify は tax.slugs を渡す: src/dn/classify.py:104,138)"
     evidence: tests/test_organize.py:74
 
   - id: AC-042
@@ -89,24 +82,20 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: API呼び出し1回、3件すべての hash で title=Shared のラベル解決を検証。labels.jsonl
-      はハッシュ単位の1行記録で、各ファイルはハッシュ経由で同一ラベルを得る設計
+    note: API呼び出し1回、3件すべての hash で title=Shared のラベル解決を検証。labels.jsonl はハッシュ単位の1行記録で、各ファイルはハッシュ経由で同一ラベルを得る設計
     evidence: tests/test_organize.py:80
 
   - id: AC-043
     kind: functional
     given: "taxonomy.yaml が無い対象ディレクトリ"
     when: "`dn plan --propose-taxonomy` を実行する"
-    then: "slug, name, description, examples を持つ 5〜15 個のカテゴリ案を
-      `.dn/taxonomy.proposed.yaml` に保存し、plan.json を生成しない"
+    then: "slug, name, description, examples を持つ 5〜15 個のカテゴリ案を `.dn/taxonomy.proposed.yaml` に保存し、plan.json を生成しない"
     priority: must
     verify: test
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: taxonomy.yaml なしで .dn/taxonomy.proposed.yaml に
-      5-15件・slug/name/description/examples を保存、plan.json 未生成、taxonomy.yaml
-      未作成を検証
+    note: taxonomy.yaml なしで .dn/taxonomy.proposed.yaml に 5-15件・slug/name/description/examples を保存、plan.json 未生成、taxonomy.yaml 未作成を検証
     evidence: tests/test_organize.py:94
 
   - id: AC-044
@@ -126,8 +115,7 @@ acceptance:
     kind: functional
     given: "同一ハッシュのファイル2件"
     when: "`--dedupe move` / `--dedupe trash` / `--dedupe keep` で plan を生成する"
-    then: "先に見つかった1件を正とし、2件目の op をそれぞれ `_duplicates/` への
-      move、trash、移動しない（skip）として出力する"
+    then: "先に見つかった1件を正とし、2件目の op をそれぞれ `_duplicates/` への move、trash、移動しない（skip）として出力する"
     priority: must
     verify: test
     status: pass
@@ -153,30 +141,26 @@ acceptance:
     kind: functional
     given: "title=`Vendor A NDA`, date=2024-03-12 のラベルと、date=null のラベル"
     when: "`--rename` を付けて plan を生成する"
-    then: "移動先ファイル名として前者は `vendor-a-nda_2024-03-12.pdf`、後者は日付なしの `<slug>.<ext>` を
-      plan.json に出力する"
+    then: "移動先ファイル名として前者は `vendor-a-nda_2024-03-12.pdf`、後者は日付なしの `<slug>.<ext>` を plan.json に出力する"
     priority: must
     verify: test
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: rename で vendor-a-nda_2024-03-12.pdf と日付なし service-terms.pdf
-      を検証(build_plan 結果=save_plan の書き出し内容, src/dn/pipeline.py:176-179)
+    note: rename で vendor-a-nda_2024-03-12.pdf と日付なし service-terms.pdf を検証(build_plan 結果=save_plan の書き出し内容, src/dn/pipeline.py:176-179)
     evidence: tests/test_organize.py:166
 
   - id: AC-048
     kind: functional
     given: "分類済みの対象ディレクトリ"
     when: "`dn plan --json` を実行する"
-    then: "元ファイルを1件も移動せず、from / to / category / confidence / op を持つ計画を JSON
-      で標準出力に出力する"
+    then: "元ファイルを1件も移動せず、from / to / category / confidence / op を持つ計画を JSON で標準出力に出力する"
     priority: must
     verify: test
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: CLI plan --json で元ファイル不変、stdout JSON の各エントリに
-      from/to/category/confidence/op を検証
+    note: CLI plan --json で元ファイル不変、stdout JSON の各エントリに from/to/category/confidence/op を検証
     evidence: tests/test_organize.py:181
 
   - id: AC-085
@@ -196,30 +180,26 @@ acceptance:
     kind: functional
     given: "LLM が subcategory に `../../secret`、`..`、taxonomy に無い `foo` の何れかを返したラベル"
     when: "plan を生成する"
-    then: "subcategory を捨てて `organized/<category>/[<year>/]<name>` を移動先として出力し、全移動先は
-      organized/ の配下に収まる（organized/ の外を指すパスを出力しない）"
+    then: "subcategory を捨てて `organized/<category>/[<year>/]<name>` を移動先として出力し、全移動先は organized/ の配下に収まる（organized/ の外を指すパスを出力しない）"
     priority: must
     verify: test
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: ../../secret(年あり)/../foo の3種で subcategory 破棄の移動先を完全一致検証し、全移動先が organized/
-      配下に resolve されることを検証
+    note: ../../secret(年あり)/../foo の3種で subcategory 破棄の移動先を完全一致検証し、全移動先が organized/ 配下に resolve されることを検証
     evidence: tests/test_organize.py:215
 
   - id: AC-087
     kind: functional
     given: "title=`業務委託基本契約書`、date=2024-03-12 のラベルと、title が記号だけ（`***`）のラベル"
     when: "`--rename` を付けて plan を生成する"
-    then: "前者は `業務委託基本契約書_2024-03-12.<ext>`、後者は元ファイル名の stem を slug 化した名前を出力し、空の
-      stem（`_2024-03-12.pdf` や `.pdf`）を出力しない"
+    then: "前者は `業務委託基本契約書_2024-03-12.<ext>`、後者は元ファイル名の stem を slug 化した名前を出力し、空の stem（`_2024-03-12.pdf` や `.pdf`）を出力しない"
     priority: must
     verify: test
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: 業務委託基本契約書_2024-03-12.pdf と記号のみ title→stem
-      slug(weird-name_2024-03-12.pdf)、先頭 _ / . の空stem無しを検証
+    note: 業務委託基本契約書_2024-03-12.pdf と記号のみ title→stem slug(weird-name_2024-03-12.pdf)、先頭 _ / . の空stem無しを検証
     evidence: tests/test_organize.py:238
 
   - id: AC-088
@@ -232,6 +212,5 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: interactive で低信頼 misc ファイルに確認が出て contracts 入力で plan.json の category/to が
-      contracts になることを検証(入力は Options.ask 注入)
+    note: interactive で低信頼 misc ファイルに確認が出て contracts 入力で plan.json の category/to が contracts になることを検証(入力は Options.ask 注入)
     evidence: tests/test_organize.py:255

@@ -129,9 +129,7 @@ class ApplyResult:
     copied: int = 0
     trashed: int = 0
     failed: int = 0
-    skipped: int = 0
     run_id: str = ""
-    problems: list[str] = field(default_factory=list)
 
     @property
     def exit_code(self) -> int:
@@ -176,6 +174,7 @@ def validate_plan(ws: Workspace, plan: Plan) -> list[str]:
             problems.append(f"destination not writable: {pe.to} ({anchor})")
         if pe.op == "copy" or src.stat().st_dev != anchor.stat().st_dev:
             need_bytes[anchor] = need_bytes.get(anchor, 0) + src.stat().st_size
+    # @assumption AS-035
     for anchor, need in need_bytes.items():
         free = shutil.disk_usage(anchor).free
         if need > free:
@@ -187,7 +186,6 @@ def apply_plan(ws: Workspace, plan: Plan) -> ApplyResult:
     result = ApplyResult(run_id=ws.run_id)
     problems = validate_plan(ws, plan)
     if problems:
-        result.problems = problems
         raise PlanValidationError(problems)
     with dn_lock(ws):
         manifest = load_manifest(ws)

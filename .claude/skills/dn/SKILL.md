@@ -3,6 +3,8 @@ name: dn
 description: Organize a messy folder by content and build an AI-readable knowledge base with the Distill Nexus CLI (`dn`). Use when the user says "このフォルダを整理して", "organize this folder", "sort these files", "build a knowledge base / glossary from these documents", or asks to undo a previous organization.
 ---
 
+<!-- @covers AC-080, AC-105 -->
+
 # Distill Nexus (`dn`) — organize files and distill knowledge
 
 All classification and knowledge decisions are made **inside the `dn` CLI** (its own prompts and

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -10,9 +11,21 @@ import shutil
 from pathlib import Path
 
 import pytest
-from conftest import SAMPLE_TREE, FakeClient, dn_json, make_llm, open_ws, tool_of, write
+from conftest import (
+    SAMPLE_TREE,
+    FakeClient,
+    dn_json,
+    make_llm,
+    open_ws,
+    run_dn,
+    smart_handler,
+    tool_of,
+    with_taxonomy,
+    write,
+)
 
 from dn.extract import extract_all, read_extracted, text_path
+from dn.pipeline import Options, Pipeline
 from dn.scan import load_inventory, scan
 
 
@@ -90,6 +103,10 @@ def test_scan_duplicates(target: Path):
     assert sorted(next(iter(out["scan"]["duplicates"].values()))) == ["one.md", "two.md"]
     assert all(e.hash_mode in ("head4m", "full") for e in inv.values())
     assert inv["one.md"].hash_mode == "full"  # <= 4MB is hashed completely
+    import hashlib
+
+    expected = hashlib.blake2b(b"same content" + b"12", digest_size=20).hexdigest()  # content, then size
+    assert inv["one.md"].hash == expected
 
 
 def test_scan_reuses_hashes_and_drops_deleted(target: Path):
@@ -111,6 +128,8 @@ def test_scan_skips_too_large(target: Path):
     write(target, ".dn/config.yaml", "max_file_mb: 0.001\n")
     write(target, "big.txt", "x" * 5000)
     write(target, "small.txt", "y")
+    code, out = dn_json("scan", str(target))
+    assert code == 0 and out["scan"]["skipped"] == ["big.txt"]
     ws, res, stats = _extract(target)
     big = next(e for e in load_inventory(ws) if e.path == "big.txt")
     assert big.skipped == "too_large" and big.hash is None
@@ -219,15 +238,32 @@ def test_extract_image_vision_and_no_images(tmp_path: Path):
     client = FakeClient(lambda req, n: {"transcript": "ORDERS -> BILLING", "description": "an ER diagram"})
     ws, _, _ = _extract(a, client=client)
     assert len(client.requests) == 1
+    block = client.requests[0]["messages"][0]["content"][0]
+    assert block["type"] == "image" and block["source"]["media_type"] == "image/png"
+    assert base64.b64decode(block["source"]["data"]) == png
     _, text = _text_for(ws, "diagram.png")
     assert "ORDERS -> BILLING" in text
+    # --no-images through the command option (Options.no_images is what `dn plan --no-images` sets)
     b = tmp_path / "b"
     write(b, "diagram.png", png)
-    client2 = FakeClient(lambda req, n: {"transcript": "never", "description": "never"})
-    ws2, _, _ = _extract(b, client=client2, want_images=False)
-    assert client2.requests == []
+    with_taxonomy(b)
+    client2 = FakeClient(smart_handler())
+    ws2 = open_ws(b)
+    report = asyncio.run(
+        Pipeline(ws2, Options(no_images=True, llm_client=client2, progress=lambda m: None)).cmd_plan()
+    )
+    assert report.exit_code == 0
+    assert [tool_of(r) for r in client2.requests if tool_of(r) == "submit_vision"] == []
+    for r in client2.requests:
+        assert all(
+            not (isinstance(c, dict) and c.get("type") == "image")
+            for c in r["messages"][0]["content"]
+            if isinstance(r["messages"][0]["content"], list)
+        )
     meta, text2 = _text_for(ws2, "diagram.png")
-    assert "never" not in text2 and meta.quality == "none"
+    assert meta.quality == "none" and text2.strip() == ""
+    cli = run_dn("plan", str(b), "--no-images", "--dry-llm", "--json")
+    assert cli.returncode == 0
 
 
 def test_extract_truncates_large_text(target: Path):
@@ -275,6 +311,8 @@ def test_scan_confirms_head_hash_collisions(target: Path):
     write(target, "a.bin", head + b"A" * 1024)
     write(target, "b.bin", head + b"B" * 1024)
     write(target, "c.bin", os.urandom(5 * 1024 * 1024))
+    code, out = dn_json("scan", str(target))
+    assert code == 0 and out["scan"]["duplicates"] == {}
     ws = open_ws(target)
     res = scan(ws)
     inv = {e.path: e for e in res.entries}

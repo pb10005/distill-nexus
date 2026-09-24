@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# @covers AC-070, AC-071, AC-072, AC-082
+# @covers AC-070, AC-071, AC-072
 """Generate ``tests/fixtures/sample_tree/`` (about 40 files, identical on every OS).
 
 Windows reserved names and >260-char paths are NOT committed (they would break a

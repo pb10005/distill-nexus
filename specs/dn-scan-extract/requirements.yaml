@@ -46,6 +46,11 @@ assumptions:
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
+  - id: AS-032
+    statement: "コードの抽出結果には指示書 §5.2（先頭200行 + docstring/コメント + 関数・クラス名一覧）に従いコメント行も最大300件含める。docstring と定義名は正規表現で拾い、構文木（ast / tree-sitter）は使わない"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
 
 open_questions: []
 

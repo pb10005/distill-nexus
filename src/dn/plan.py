@@ -105,7 +105,7 @@ def build_plan(
     labels = load_labels(ws, taxonomy_key(ws.taxonomy))
     out = ws.out
     ordered = sorted((e for e in entries if e.hash), key=lambda e: e.path)
-    plan = Plan(root=ws.root.as_posix(), out_root=out.as_posix(), dedupe=dedupe, copy_mode=copy)  # type: ignore[arg-type]
+    plan = Plan(root=ws.root.as_posix(), out_root=out.as_posix(), dedupe=dedupe)  # type: ignore[arg-type]
     op_main = "copy" if copy else "move"
 
     # pass 1: decide category / folder / name, find duplicates and files already in place

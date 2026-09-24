@@ -19,7 +19,6 @@ import getpass
 import hashlib
 import json
 import logging
-import math
 import os
 import re
 from collections.abc import Awaitable, Callable
@@ -403,7 +402,3 @@ def _append_error(content: Any, error: str) -> Any:
 
 def image_block(data_b64: str, media_type: str) -> dict[str, Any]:
     return {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data_b64}}
-
-
-def ceil_div(a: int, b: int) -> int:
-    return math.ceil(a / b)

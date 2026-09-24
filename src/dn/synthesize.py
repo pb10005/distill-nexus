@@ -469,6 +469,7 @@ def conflicts(facts: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     return [g for g in groups.values() if len({f["object"].strip().casefold() for f in g}) > 1]
 
 
+# @assumption AS-036
 def open_questions_md(k: Knowledge, facts: list[dict[str, Any]], t: dict[str, str]) -> str:
     lines = [f"# {t['questions']}", "", f"## {t['conflicts']}", ""]
     cs = conflicts(facts)

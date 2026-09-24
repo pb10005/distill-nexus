@@ -4,8 +4,7 @@ id: FEAT-003
 title: "Distill Nexus LLM 呼び出し層（構造化出力・リトライ・キャッシュ・コスト制御）"
 status: frozen
 
-intent: "全フェーズのLLM呼び出しを1か所に集約し、スキーマ強制・再試行・キャッシュ・コスト上限・APIを使わないテスト経路を保証することで、再実行\
-  してもコストが増えず、結果が再現できるようにする。"
+intent: "全フェーズのLLM呼び出しを1か所に集約し、スキーマ強制・再試行・キャッシュ・コスト上限・APIを使わないテスト経路を保証することで、再実行してもコストが増えず、結果が再現できるようにする。"
 
 out_of_scope:
   - "Anthropic 以外のLLMプロバイダ（OpenAI, Bedrock, Vertex）への対応"
@@ -15,30 +14,28 @@ out_of_scope:
 
 assumptions:
   - id: AS-009
-    statement: "並列呼び出しは anthropic SDK の AsyncAnthropic（httpx ベース）と asyncio.Semaphore
-      で行う。SDK 内蔵のリトライは max_retries=0 で無効化し、dn 側で
-      429/529/5xx/接続エラーのみ最大5回、基底1秒の指数バックオフで再試行する"
+    statement: "並列呼び出しは anthropic SDK の AsyncAnthropic（httpx ベース）と asyncio.Semaphore で行う。SDK 内蔵のリトライは max_retries=0 で無効化し、dn 側で 429/529/5xx/接続エラーのみ最大5回、基底1秒の指数バックオフで再試行する"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-010
-    statement: "録画再生モード（DN_LLM_REPLAY=1）の録画キーはLLMキャッシュキーと同じ値とし、`tests/fixtures/llm/\
-      <key>.json` に応答JSONを置く。DN_LLM_RECORD=1 のときは実呼び出し結果を同じ場所へ保存する"
+    statement: "録画再生モード（DN_LLM_REPLAY=1）の録画キーはLLMキャッシュキーと同じ値とし、`tests/fixtures/llm/<key>.json` に応答JSONを置く。DN_LLM_RECORD=1 のときは実呼び出し結果を同じ場所へ保存する。録画の置き場所は環境変数 DN_LLM_FIXTURES で変更できる（既定 tests/fixtures/llm/）"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-011
-    statement: "単価（USD / 100万トークン）は sonnet 入力3・出力15、opus 入力15・出力75、haiku 入力1・出力5
-      を既定表として持つ。出力トークンの事前見積りはフェーズごとの max_tokens の 30% とする"
+    statement: "単価（USD / 100万トークン）は sonnet 入力3・出力15、opus 入力15・出力75、haiku 入力1・出力5 を既定表として持つ。出力トークンの事前見積りはフェーズごとの max_tokens の 30% とする"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
 
   - id: AS-023
-    statement: "temperature=0 と強制 tool_choice（type: tool）は、それを受け付けるモデル（claude-*-4-6
-      以前の4系、haiku-4-5）にのみ送る。temperature を拒否するモデル（opus-4-7 以降、sonnet-5、opus-5
-      系、fable 系）では temperature を省略し、強制 tool_choice
-      を拒否するモデル（opus-5-5、fable-5-1）では tool_choice auto とツール使用を指示する system 文で代替する"
+    statement: "temperature=0 と強制 tool_choice（type: tool）は、それを受け付けるモデル（claude-*-4-6 以前の4系、haiku-4-5）にのみ送る。temperature を拒否するモデル（opus-4-7 以降、sonnet-5 以降、opus-5 系、fable 系、mythos 系）では temperature を省略し、強制 tool_choice を拒否するモデル（opus-5-5、fable-5-1、mythos-5-1）では tool_choice auto とツール使用を指示する system 文で代替する"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-031
+    statement: "--dry-llm の分類ダミーは taxonomy の slug・name・subcategories とのキーワード一致で category を選ぶ（一致なしは misc / confidence 0.3）。知識抽出ダミーは見出しを用語・エンティティにする。スキーマ準拠だけでなく配線確認時に整理結果が偏らないようにするための決定的なダミーであり、実分類の代替ではない"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -56,8 +53,7 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: 2回目リクエスト本文に検証エラー(failed
-      validation/confidence)を含むこと、呼び出し2回、2回目の結果(0.8)を返すことを検証。pytest 16 passed
+    note: 2回目リクエスト本文に検証エラー(failed validation/confidence)を含むこと、呼び出し2回、2回目の結果(0.8)を返すことを検証。pytest 16 passed
     evidence: tests/test_llm.py:47
 
   - id: AC-029
@@ -122,9 +118,7 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: dry-llm で API を爆発させるクライアントのまま run が exit 0(=検証エラー0件)、api_calls=0、INDEX.md
-      生成を検証。distill 実行自体の明示アサーションは無い(手動プローブで distilled=1
-      を確認)。後半ループはテスト側ダミーのため根拠にしていない
+    note: dry-llm で API を爆発させるクライアントのまま run が exit 0(=検証エラー0件)、api_calls=0、INDEX.md 生成を検証。distill 実行自体の明示アサーションは無い(手動プローブで distilled=1 を確認)。後半ループはテスト側ダミーのため根拠にしていない
     evidence: tests/test_llm.py:124
 
   - id: AC-034
@@ -176,8 +170,7 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: .dn/logs/<run_id>.json に input/output tokens 値、cache_read_input_tokens
-      キー、cost_usd>0 を検証
+    note: .dn/logs/<run_id>.json に input/output tokens 値、cache_read_input_tokens キー、cost_usd>0 を検証
     evidence: tests/test_llm.py:207
 
   - id: AC-038
@@ -190,22 +183,18 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: 全リクエスト本文に対象ディレクトリ絶対パス(str/posix)と OS ユーザー名(語境界)が無いことを検証。ホーム配下は tmp
-      配下の擬似パスで代替
+    note: 全リクエスト本文に対象ディレクトリ絶対パス(str/posix)と OS ユーザー名(語境界)が無いことを検証。ホーム配下は tmp 配下の擬似パスで代替
     evidence: tests/test_llm.py:222
 
   - id: AC-039
     kind: functional
     given: "既定モデル claude-sonnet-4-6 での任意のフェーズの LLM 呼び出し"
     when: "API リクエストを組み立てる"
-    then: "temperature 0、フェーズ別 max_tokens（分類1000・抽出4000・統合8000）、system への
-      cache_control ephemeral、tool_choice によるツール指定を含む"
+    then: "temperature 0、フェーズ別 max_tokens（分類1000・抽出4000・統合8000）、system への cache_control ephemeral、tool_choice によるツール指定を含む"
     priority: must
     verify: test
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: classify/distill/topic_doc の max_tokens 1000/4000/8000、全ツールで
-      model=sonnet-4-6, temperature 0, system末尾 cache_control ephemeral,
-      tool_choice type tool を検証
+    note: classify/distill/topic_doc の max_tokens 1000/4000/8000、全ツールで model=sonnet-4-6, temperature 0, system末尾 cache_control ephemeral, tool_choice type tool を検証
     evidence: tests/test_llm.py:240

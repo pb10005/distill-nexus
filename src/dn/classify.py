@@ -25,6 +25,7 @@ HEAD_CHARS = 6000
 PROPOSAL_SAMPLE = 500
 
 
+# @assumption AS-033
 def taxonomy_key(tax: Taxonomy | None) -> str:
     blob = json.dumps(tax.model_dump() if tax else None, sort_keys=True, ensure_ascii=False)
     return hashlib.blake2b(blob.encode(), digest_size=8).hexdigest()
@@ -56,6 +57,7 @@ def load_labels(ws: Workspace, key: str | None = None) -> dict[str, LabelRecord]
     return out
 
 
+# @assumption AS-031
 def _dry_label(tax: Taxonomy | None, text: str, name: str) -> Label:
     """--dry-llm: deterministic keyword match against the taxonomy; schema-valid."""
     hay = (name + "\n" + text).casefold()

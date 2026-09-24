@@ -40,6 +40,11 @@ assumptions:
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
+  - id: AS-036
+    statement: "open-questions.md には矛盾する facts（AC-064）に加え、distill で LLM が questions として挙げた欠落・曖昧な情報を source 付きで載せる（指示書 §4「ソース間の矛盾・欠落情報」、§6.3）"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
 
 open_questions: []
 

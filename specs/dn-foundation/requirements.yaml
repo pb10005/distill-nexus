@@ -4,42 +4,32 @@ id: FEAT-001
 title: "Distill Nexus 基盤: パッケージ雛形・設定・スキーマ・OS差分吸収"
 status: frozen
 
-intent: "Distill Nexus (dn)
-  の全フェーズが共通に依存する土台（CLIエントリ、設定とtaxonomyの検証、LLM出力を含むpydanticスキーマ、Windows/Linux/ma\
-  cOSのファイル名・パス差分の吸収、危険な対象ディレクトリの拒否）を、3OSで同一コードとして提供する。"
+intent: "Distill Nexus (dn) の全フェーズが共通に依存する土台（CLIエントリ、設定とtaxonomyの検証、LLM出力を含むpydanticスキーマ、Windows/Linux/macOSのファイル名・パス差分の吸収、危険な対象ディレクトリの拒否）を、3OSで同一コードとして提供する。"
 
 out_of_scope:
   - "GUI・Web UIの提供"
   - "クラウドストレージ（Google Drive, S3, OneDrive）との直接連携"
-  - "グローバル設定ファイル（platformdirs の user_config_dir）の読み込み。v1はプロジェクト内 .dn/config.yaml
-    のみ読む"
+  - "グローバル設定ファイル（platformdirs の user_config_dir）の読み込み。v1はプロジェクト内 .dn/config.yaml のみ読む"
   - "設定ファイルのマイグレーション機構（旧バージョン設定の自動変換）"
 
 assumptions:
   - id: AS-001
-    statement: "CLI名・作業ディレクトリ名は指示書 §1/§2 の `dn` 系に統一する。コマンドは `dn`、作業領域は
-      `.dn/`、除外ファイルは `.dnignore`、録画再生の環境変数は `DN_LLM_REPLAY`、スキルは
-      `.claude/skills/dn/`、プロンプト格納先は `src/dn/prompts/`。指示書の後半に残る `korg` /
-      `.korg/` / `KORG_LLM_REPLAY` は改名前の表記として扱い、実装しない"
+    statement: "CLI名・作業ディレクトリ名は指示書 §1/§2 の `dn` 系に統一する。コマンドは `dn`、作業領域は `.dn/`、除外ファイルは `.dnignore`、録画再生の環境変数は `DN_LLM_REPLAY`、スキルは `.claude/skills/dn/`、プロンプト格納先は `src/dn/prompts/`。指示書の後半に残る `korg` / `.korg/` / `KORG_LLM_REPLAY` は改名前の表記として扱い、実装しない"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-002
-    statement: "配布パッケージ名は `distill-nexus`、importパッケージ名は `dn`、src
-      レイアウト（`src/dn/`）とする。`uv tool install .` で `dn` コマンドが入る"
+    statement: "配布パッケージ名は `distill-nexus`、importパッケージ名は `dn`、src レイアウト（`src/dn/`）とする。`uv tool install .` で `dn` コマンドが入る"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-003
-    statement: "モデル既定値は指示書どおり model=`claude-sonnet-4-6`、synth_model 未指定時は model
-      と同じ値を使う。`.dn/config.yaml` の雛形には synth_model: `claude-opus-4-1`
-      を記載する。単価表はモデル名の接頭辞で引き、未知モデルは sonnet 単価で見積もる"
+    statement: "モデル既定値は指示書どおり model=`claude-sonnet-4-6`、synth_model 未指定時は model と同じ値を使う。`.dn/config.yaml` の雛形には synth_model: `claude-opus-4-1` を記載する。単価表はモデル名の接頭辞で引き、未知モデルは sonnet 単価で見積もる"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-004
-    statement: "Windows のパス長上限は 260 文字、POSIX のファイル名長上限は 255 バイトとして扱う。`long_path()` は
-      Windows でのみ `\\\\?\\` を付与し、他OSでは入力をそのまま返す。切り詰め後の上限はファイル名 200 文字"
+    statement: "Windows のパス長上限は 260 文字、POSIX のファイル名長上限は 255 バイトとして扱う。`long_path()` は Windows でのみ `\\\\?\\` を付与し、他OSでは入力をそのまま返す。切り詰め後の上限はファイル名 200 文字。POSIX のパス全長上限は 4096 文字として扱う"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -94,8 +84,7 @@ acceptance:
 
   - id: AC-004
     kind: functional
-    given: "`.dn/config.yaml` に不正な値（concurrency: 0、confidence_threshold: 1.5、未知の
-      dedupe 値のいずれか）が書かれた対象ディレクトリ"
+    given: "`.dn/config.yaml` に不正な値（concurrency: 0、confidence_threshold: 1.5、未知の dedupe 値のいずれか）が書かれた対象ディレクトリ"
     when: "任意のサブコマンドを実行する"
     then: "不正なキー名を含むエラーメッセージを出力し、終了コード2を返す"
     priority: must
@@ -103,8 +92,7 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: concurrency 0 / confidence_threshold 1.5 / 未知の dedupe の3件すべてで rc 2 と
-      stderr のキー名を検証（サブコマンドは scan で代表させている）
+    note: concurrency 0 / confidence_threshold 1.5 / 未知の dedupe の3件すべてで rc 2 と stderr のキー名を検証（サブコマンドは scan で代表させている）
     evidence: tests/test_foundation.py:46
 
   - id: AC-005
@@ -122,8 +110,7 @@ acceptance:
 
   - id: AC-006
     kind: functional
-    given: "Windows 予約名（CON, PRN, AUX, NUL, COM1-9,
-      LPT1-9。大文字小文字・拡張子の有無を問わない）、または末尾がドット・空白の名前"
+    given: "Windows 予約名（CON, PRN, AUX, NUL, COM1-9, LPT1-9。大文字小文字・拡張子の有無を問わない）、または末尾がドット・空白の名前"
     when: "`safe_name()` に渡す"
     then: "予約名には `_` を付与した名前を返し、末尾のドット・空白を除去した名前を返す"
     priority: must
@@ -196,8 +183,7 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: confidence 1.5 / date 2024/03/12 / summary 欠損 のすべてで ValidationError
-      とフィールド名を検証
+    note: confidence 1.5 / date 2024/03/12 / summary 欠損 のすべてで ValidationError とフィールド名を検証
     evidence: tests/test_foundation.py:131
 
   - id: AC-011
@@ -210,8 +196,7 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: plan/distill/run で API キー未設定・replay 無し（conftest で DN_LLM_REPLAY 削除）の場合 rc
-      2 と stderr の ANTHROPIC_API_KEY を検証
+    note: plan/distill/run で API キー未設定・replay 無し（conftest で DN_LLM_REPLAY 削除）の場合 rc 2 と stderr の ANTHROPIC_API_KEY を検証
     evidence: tests/test_foundation.py:153
 
   - id: AC-012
@@ -224,8 +209,7 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: home は scan/plan/apply/run で rc 2 を検証（:168）、fs ルートは apply で rc 2（:185）、C:\
-      は is_dangerous_root で判定（:198）。拒否の副作用が無いことも検証
+    note: home は scan/plan/apply/run で rc 2 を検証（:168）、fs ルートは apply で rc 2（:185）、C:\ は is_dangerous_root で判定（:198）。拒否の副作用が無いことも検証
     evidence: tests/test_foundation.py:168
 
   - id: AC-013

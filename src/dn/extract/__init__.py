@@ -11,7 +11,7 @@ import asyncio
 import base64
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -179,7 +179,6 @@ class ExtractStats:
     cached: int = 0
     failed: int = 0
     unsupported: int = 0
-    kinds: dict[str, str] = field(default_factory=dict)  # hash -> kind
 
 
 def text_path(ws: Workspace, h: str) -> Path:
@@ -229,7 +228,6 @@ async def extract_all(
         seen.add(e.hash)
         if text_path(ws, e.hash).exists():
             stats.cached += 1
-            stats.kinds[e.hash] = kind_by_ext(e.ext)
             continue
         todo.append(e)
 
@@ -241,7 +239,6 @@ async def extract_all(
             stats.failed += 1
             ws.record_error(e.path, "extract", exc)
             return
-        stats.kinds[e.hash] = kind
         if kind in EXTRACTABLE:
             stats.extracted += 1
         else:

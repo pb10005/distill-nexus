@@ -136,6 +136,9 @@ def test_dry_llm_all_schemas(target: Path):
     assert report.exit_code == 0
     assert report.data["llm"]["api_calls"] == 0 and report.data["llm"]["generated"] > 0
     assert (ws.knowledge_dir / "INDEX.md").exists()
+    assert report.data["classify"]["classified"] == 2
+    assert report.data["distill"]["distilled"] >= 1
+    assert report.data["synthesize"]["topics"] >= 1
     llm = make_llm(target, _Explode(), mode="dry")
     for model, dummy in [
         (Label, lambda: Label(category="misc", confidence=0.1, title="t", summary="s", tags=[])),

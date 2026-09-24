@@ -18,7 +18,7 @@ from rich.table import Table
 
 from dn import __version__
 from dn.config import init_project
-from dn.errors import EXIT_CONFIG, EXIT_OK, DnError
+from dn.errors import EXIT_OK, DnError
 from dn.pipeline import Options, Pipeline, Report
 from dn.workspace import Workspace
 
@@ -55,6 +55,7 @@ CostOpt = Annotated[
     float | None,
     typer.Option("--max-cost", help="Stop before calling the API if the estimate exceeds this (USD)"),
 ]
+# @assumption AS-037
 LangOpt = Annotated[str | None, typer.Option("--lang", help="ja | en | auto")]
 CopyOpt = Annotated[bool, typer.Option("--copy", help="Copy instead of move")]
 RenameOpt = Annotated[
@@ -128,6 +129,7 @@ def _execute(
             sys.stdout.write(json.dumps({"error": str(e), "exit_code": code}, ensure_ascii=False) + "\n")
         ctx.err.print(f"[red]error:[/red] {e}", markup=True, highlight=False)
     except KeyboardInterrupt:
+        # @assumption AS-034
         code = 130
         ctx.err.print("interrupted")
     finally:
@@ -199,28 +201,28 @@ def _root(
 
 
 @app.command()
-def init(target: Target = Path("."), json_out: JsonOpt = False, no_color: NoColorOpt = False) -> None:
+def init(
+    target: Target = Path("."),
+    json_out: JsonOpt = False,
+    danger: DangerOpt = False,
+    no_color: NoColorOpt = False,
+) -> None:
     """Create .dn/config.yaml and taxonomy.yaml templates (existing files are kept)."""
     ctx = Ctx(json_out, 0, no_color)
-    code = EXIT_OK
-    try:
-        root = target.expanduser().resolve()
-        if not root.is_dir():
-            raise DnError(f"not a directory: {root}", exit_code=EXIT_CONFIG)
-        created = init_project(root)
-        if json_out:
-            sys.stdout.write(json.dumps({"created": [str(p) for p in created]}) + "\n")
-        else:
-            for p in created:
-                ctx.out.print(f"created {p}")
-            if not created:
-                ctx.out.print("nothing to do (files already exist)")
-    except DnError as e:
-        code = e.exit_code
-        ctx.err.print(f"error: {e}")
-    finally:
-        ctx.close()
-    raise typer.Exit(code)
+
+    def body(ws: Workspace) -> Report:
+        created = [str(p) for p in init_project(ws.root)]
+        return Report(
+            {"created": created, "message": "nothing to do (files already exist)" if not created else ""}
+        )
+
+    def render(c: Ctx, r: Report) -> None:
+        for p in r.data["created"]:
+            c.out.print(f"created {p}")
+        if r.data["message"]:
+            c.out.print(r.data["message"])
+
+    _execute(ctx, target, body, danger=danger, render=render)
 
 
 @app.command("scan")

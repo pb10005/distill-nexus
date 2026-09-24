@@ -16,7 +16,7 @@ from typing import Any
 from dn import classify as classify_mod
 from dn.apply import ApplyResult, actionable, apply_plan
 from dn.distill import distill, facts_path
-from dn.errors import EXIT_OK, EXIT_PARTIAL, ConfigError, CostLimitExceeded, DnError
+from dn.errors import EXIT_OK, EXIT_PARTIAL, ConfigError, CostLimitExceeded, DnError, worst
 from dn.extract import EXTRACTABLE, extract_all, kind_by_ext, read_extracted, text_path
 from dn.llm import (
     LLM,
@@ -267,8 +267,8 @@ class Pipeline:
         report.data["errors"] = self.ws.error_count
         if self.ws.warnings:
             report.data["warnings"] = self.ws.warnings
-        if self.ws.error_count and report.exit_code == EXIT_OK:
-            report.exit_code = EXIT_PARTIAL
+        if self.ws.error_count:
+            report.exit_code = worst(report.exit_code, EXIT_PARTIAL)
         return report
 
     async def cmd_plan(self, propose: bool = False) -> Report:

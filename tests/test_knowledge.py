@@ -173,8 +173,13 @@ def test_normalization_merges_variants(target: Path):
     ents = json.loads((ws.knowledge_dir / "entities.json").read_text(encoding="utf-8"))
     assert [e["name"] for e in ents] == ["API Gateway"] and ents[0]["aliases"] == ["API gateway"]
     gloss = (ws.knowledge_dir / "glossary.md").read_text(encoding="utf-8")
-    rows = [ln for ln in gloss.splitlines() if ln.startswith("| API")]
-    assert len(rows) == 1 and "| API gateway |" in rows[0]
+    rows = [
+        [c.strip() for c in ln.strip("|").split("|")] for ln in gloss.splitlines() if ln.startswith("| API")
+    ]
+    assert len(rows) == 1
+    term, _definition, aliases, _first = rows[0]
+    assert term == "API Gateway"
+    assert aliases == "API gateway"
 
 
 def test_unassigned_entities_go_to_general(target: Path):
@@ -342,11 +347,16 @@ def test_manual_sections_preserved(target: Path):
 def test_glossary_order(target: Path):
     """AC-069: glossary is a GFM table sorted alphabetically first, then in kana order."""
     names = ["Zeta", "イベントバス", "alpha", "あいさつ", "API", "さくら"]
-    terms = [{"term": n, "definition": f"def of {n}", "aliases": [], "locator": "L1"} for n in names]
-    ws, _, _ = build(target, {"a.md": DOC}, {"submit_distill": distilled(terms=terms)})
+    terms = [
+        {"term": n, "definition": f"def of {n}", "aliases": [f"{n}-alias"], "locator": "L1"} for n in names
+    ]
+    ja_doc = "# 用語\n\nこの文書はイベントバスとゲートウェイの用語を説明します。\n"
+    ws, _, _ = build(target, {"a.md": ja_doc}, {"submit_distill": distilled(terms=terms)})
     gloss = (ws.knowledge_dir / "glossary.md").read_text(encoding="utf-8").splitlines()
     header = next(i for i, ln in enumerate(gloss) if ln.startswith("| "))
     assert gloss[header + 1] == "|---|---|---|---|"
     rows = [ln.split("|")[1].strip() for ln in gloss[header + 2 :] if ln.startswith("| ")]
     assert rows == ["alpha", "API", "Zeta", "あいさつ", "イベントバス", "さくら"]
-    assert len(gloss[header].split("|")) == 6  # 4 columns: term / definition / aliases / first source
+    assert [c.strip() for c in gloss[header].strip("|").split("|")] == ["用語", "定義", "別名", "初出ソース"]
+    alpha = [c.strip() for c in gloss[header + 2].strip("|").split("|")]
+    assert alpha == ["alpha", "def of alpha", "alpha-alias", "a.md#L1"]

@@ -41,6 +41,11 @@ assumptions:
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
+  - id: AS-035
+    statement: "apply の事前検証には指示書 §5.5 の空き容量チェック（コピー・別デバイス移動の合計サイズと移動先の空き容量）を含める。別デバイス間の移動は copy2 → サイズと全量ハッシュの一致確認 → 元の削除の順で行う"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
 
 open_questions: []
 
@@ -122,8 +127,13 @@ acceptance:
     then: "移動を拒否し、終了コード1を返す"
     priority: must
     verify: test
-    status: pending
-    attempts: 0
+    status: fail
+    attempts: 1
+    verified_at: 2026-09-24
+    note: live lock で apply/undo 共に exit 1 は検証済み。脱出判定は '../escaped.txt'（正規化）のみで、AC
+      が明示する『シンボリックリンク解決後』に外へ出るケース（対象内のシンボリックリンク経由で外部を指す移動先）を踏んでいない。実装は
+      src/dn/apply.py:88 で resolve() しているがテストで未検証
+    evidence: tests/test_apply.py:127
 
   - id: AC-089
     kind: functional
@@ -133,8 +143,13 @@ acceptance:
     then: "事前検証で失敗して該当パスを出力し、どのファイルも移動・上書きせず、終了コード1を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 3ケースで PlanValidationError exit_code=1、problems に理由と該当パス、tree_state
+      不変、既存ファイル非上書きを検証。not_writable は os.access をモックしているが対象は検査結果の扱いであり SUT
+      自体ではない。CLI の問題出力は test_apply.py:48 で同じ例外経路。PASSED
+    evidence: tests/test_apply.py:135
 
   - id: AC-090
     kind: functional
@@ -143,8 +158,13 @@ acceptance:
     then: "trash した件はゴミ箱からの手動復元が必要という警告とパス一覧を出力してスキップし、他の件を元の位置へ戻し、終了コード3を返す"
     priority: must
     verify: test
-    status: pending
-    attempts: 0
+    status: fail
+    attempts: 1
+    verified_at: 2026-09-24
+    note: exit_code=3・restored=3・u.trashed
+      のパスを検証しているが、『ゴミ箱からの手動復元が必要』という警告の出力を一切アサートしていない（stderr/ログ未検証）。then
+      の警告出力部分が未検証
+    evidence: tests/test_apply.py:166
 
   - id: AC-091
     kind: functional
@@ -153,8 +173,12 @@ acceptance:
     then: "ハッシュが一致するコピーだけを削除し、元ファイルは内容・mtime とも変わらない"
     priority: must
     verify: test
-    status: pending
-    attempts: 0
+    status: fail
+    attempts: 1
+    verified_at: 2026-09-24
+    note: 一致コピー3件の削除と元ファイルの内容/mtime
+      不変は検証済み。だが『ハッシュが一致するコピーだけ』を削除する境界（改変されたコピーは残す）を踏むケースが無い
+    evidence: tests/test_apply.py:183
 
   - id: AC-092
     kind: functional
@@ -163,8 +187,12 @@ acceptance:
     then: "残り4件を移動し、3件目を errors.jsonl に記録し、manifest には成功した4件だけを記録し、終了コード3を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 3回目の _move_file で PermissionError、moved=4・failed=1・exit_code=3、manifest
+      4件、errors.jsonl(phase=apply, PermissionError) を検証。PASSED
+    evidence: tests/test_apply.py:197
 
   - id: AC-093
     kind: functional
@@ -173,8 +201,13 @@ acceptance:
     then: "`.dn/lock` は削除されている（存在しない）"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: normal/exception(save_manifest)/KeyboardInterrupt の3パターンで lock
+      不在を検証。テストは例外発生自体を pytest.raises で確認していないが、src/dn/apply.py:199 と :216
+      から両例外は伝播する（:218 は Exception のみ捕捉、:199 は try 外）。PASSED
+    evidence: tests/test_apply.py:218
 
   - id: AC-094
     kind: functional
@@ -183,8 +216,11 @@ acceptance:
     then: "stale lock の警告を出力して lock を取り直し、移動を実行する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 死んだ PID 999999 の lock で warnings に stale lock、moved=3、終了後 lock 不在を検証。PASSED
+    evidence: tests/test_apply.py:235
 
   - id: AC-095
     kind: functional
@@ -193,8 +229,12 @@ acceptance:
     then: "前者は未 undo の最新 run（B）だけを戻す。後者（B が未 undo のとき）は A の該当件をスキップして警告を出力する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 引数なし undo で run_id=B・restored=1・A の undone_at None、--run-id A で moved
+      again by a later run のスキップ理由、B の移動先保持、他件復元を検証。PASSED
+    evidence: tests/test_apply.py:272
 
   - id: AC-096
     kind: functional
@@ -203,8 +243,12 @@ acceptance:
     then: "manifest の from は元のコードポイント列のまま記録され、undo 後のファイル名は元のコードポイント列と一致する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: NFD 名が保持される FS で実行され（skip されず PASSED）、manifest.from==NFD、undo 後 listdir に
+      NFD 名を検証
+    evidence: tests/test_apply.py:295
 
   - id: AC-097
     kind: functional
@@ -214,5 +258,9 @@ acceptance:
       後は全ファイルが元の位置に残る（元の相対パスで一致する）"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 外部 --out で <out>/contracts/nda.txt 等に存在、undo 後 root の tree_state が apply
+      前と一致を検証。PASSED
+    evidence: tests/test_apply.py:309

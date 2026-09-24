@@ -130,6 +130,17 @@ def test_apply_refuses_live_lock_and_escape(target: Path):
     assert p2.returncode == 1 and "outside target" in p2.stderr
     assert tree_state(target) == before
     assert not (target.parent / "escaped.txt").exists()
+    if os.name != "nt":  # escape through a symlink inside organized/
+        outside = target.parent / "outside-dir"
+        outside.mkdir()
+        (target / "organized").mkdir(exist_ok=True)
+        (target / "organized" / "link").symlink_to(outside, target_is_directory=True)
+        plan["entries"][0]["to"] = "organized/link/escaped.txt"
+        ws.plan_path.write_text(json.dumps(plan), encoding="utf-8")
+        p3 = run_dn("apply", str(target), "--yes")
+        assert p3.returncode == 1 and "outside target" in p3.stderr
+        assert list(outside.iterdir()) == []
+        assert tree_state(target) == before
 
 
 @pytest.mark.parametrize("case", ["dest_exists", "source_changed", "not_writable"])
@@ -172,12 +183,14 @@ def test_undo_trash_warns(target: Path, monkeypatch: pytest.MonkeyPatch, tmp_pat
     monkeypatch.setattr(apply_mod, "to_trash", lambda p: os.replace(p, trash / p.name))
     res = apply_plan(ws, load_plan(ws))
     assert res.trashed == 1 and res.moved == 3
-    u = undo(open_ws(target))
-    assert u.exit_code == 3
-    assert u.trashed == ["inbox/nda.txt"] or u.trashed == ["dup/nda-copy.txt"]
-    assert u.restored == 3
-    p = run_dn("undo", str(target))  # already undone: nothing left
-    assert p.returncode == 0
+    trashed_path = next(m["from"] for m in moves(ws) if m["op"] == "trash")
+    p = run_dn("undo", str(target))
+    assert p.returncode == 3
+    assert "sent to the OS trash and must be restored manually" in p.stderr
+    assert trashed_path in p.stderr
+    for rel in FILES:
+        assert (target / rel).is_file() or rel == trashed_path
+    assert not (target / trashed_path).exists()
 
 
 def test_undo_copy_removes_only_copies(target: Path):
@@ -191,6 +204,21 @@ def test_undo_copy_removes_only_copies(target: Path):
     code, out = dn_json("undo", str(target))
     assert code == 0 and out["undo"]["removed_copies"] == 3
     assert not any(c.exists() for c in copies)
+    assert tree_state(target) == before
+
+
+def test_undo_copy_keeps_modified_copy(target: Path):
+    """AC-091: a copy whose hash no longer matches is not deleted; the other copies are; originals unchanged."""
+    planned(target, copy=True)
+    before = tree_state(target)
+    assert run_dn("apply", str(target), "--yes").returncode == 0
+    ws = open_ws(target)
+    copies = [target / m["to"] for m in moves(ws)]
+    copies[0].write_text("the user edited this copy", encoding="utf-8")
+    code, out = dn_json("undo", str(target))
+    assert code == 3 and out["undo"]["removed_copies"] == 2
+    assert copies[0].read_text(encoding="utf-8") == "the user edited this copy"
+    assert not copies[1].exists() and not copies[2].exists()
     assert tree_state(target) == before
 
 

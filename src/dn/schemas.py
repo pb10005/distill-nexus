@@ -238,7 +238,6 @@ class Plan(BaseModel):
     root: str
     out_root: str
     dedupe: Literal["move", "trash", "keep"] = "move"
-    copy_mode: bool = False
     entries: list[PlanEntry] = Field(default_factory=list)
 
 

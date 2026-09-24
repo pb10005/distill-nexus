@@ -13,12 +13,25 @@ out_of_scope:
 
 assumptions:
   - id: AS-021
-    statement: "`tests/fixtures/sample_tree/` は `scripts/make_sample_tree.py` で生成してコミットする。Windows 予約名・260文字超のパスを持つファイルは Windows の checkout を壊すためコミットせず、テスト実行時に一時ディレクトリへ生成する"
+    statement: "`tests/fixtures/sample_tree/` は `scripts/make_sample_tree.py`
+      で生成してコミットする。Windows 予約名・260文字超のパスを持つファイルは Windows の checkout
+      を壊すためコミットせず、テスト実行時に一時ディレクトリへ生成する"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-022
-    statement: "run の「変更なし」判定は、scan の新規・変更ファイル数0、LLM 実呼び出し0、apply 移動0 のときに `no changes` を出力することとする。_knowledge/ は毎回再生成するが、生成内容が同一なら変更に数えない"
+    statement: "run の「変更なし」判定は、scan の新規・変更ファイル数0、LLM 実呼び出し0、apply 移動0 のときに `no
+      changes` を出力することとする。_knowledge/ は毎回再生成するが、生成内容が同一なら変更に数えない"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-034
+    statement: "Ctrl-C（KeyboardInterrupt）で中断した場合の終了コードは 130（シェル慣例）とし、AS-024 の 0〜4 の体系の外に置く"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-037
+    statement: "指示書 §7 の共通オプションのうち AC を持たないもの（--lang、--include-hidden、--follow-symlinks、--full-hash、-v/-vv、--no-color、export の --output）は指示書どおりに実装する。--lang は LLM への出力言語指示と _knowledge/ の見出し語（日本語/英語）を切り替える。auto はソースの文字数で多い言語"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -33,8 +46,12 @@ acceptance:
     then: "plan.json と _knowledge/ を生成し、元ファイルを1件も移動しない"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: pytest tests/test_run.py 20 passed. plan.json存在(:35),
+      _knowledge/INDEX.md存在(:36), 元ファイルのパス・hash・mtime不変(:37)
+    evidence: tests/test_run.py:35
 
   - id: AC-071
     kind: functional
@@ -43,8 +60,12 @@ acceptance:
     then: "全ファイルの相対パス・ハッシュ・mtime が元ツリーと一致する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: run --apply --yes 後に移動発生(:47-48)、undo後に
+      tree_state(相対パス・sha256・mtime_ns)が元と完全一致(:51)
+    evidence: tests/test_run.py:51
 
   - id: AC-072
     kind: functional
@@ -53,28 +74,42 @@ acceptance:
     then: "LLM の実呼び出し0件で終了し、`no changes` を出力する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 2回目 run で llm.generated==0 かつ api_calls==0(:61)、message=='no changes' かつ
+      stderr に no changes(:62-63)。generated は全バックエンドのキャッシュミス数(src/dn/llm.py:157)
+    evidence: tests/test_run.py:61
 
   - id: AC-073
     kind: functional
     given: "`--concurrency 1` で、モック LLM が3回目の分類呼び出しで KeyboardInterrupt を送出して中断した run"
     when: "`dn run` を再実行する"
-    then: "中断前に完了した2件の LLM 呼び出しは再実行しない。残りのファイルのラベルを labels.jsonl に保存する（末尾に途中まで書かれた行があっても読み飛ばす）"
+    then: "中断前に完了した2件の LLM 呼び出しは再実行しない。残りのファイルのラベルを labels.jsonl
+      に保存する（末尾に途中まで書かれた行があっても読み飛ばす）"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: concurrency=1で3回目classifyにKeyboardInterrupt、完了2件を確認(:91)、末尾に途中行を追記(:89)。再実行でclassify
+      3回のみ・完了2件のパスは再送なし(:99-102)、labels.jsonlから5件読める(:105)
+    evidence: tests/test_run.py:99
 
   - id: AC-074
     kind: functional
     given: "apply の途中で移動に失敗して中断した run"
     when: "manifest.json を読み、`dn undo` を実行する"
-    then: "manifest.json は JSON として parse でき、undo は中断前に完了した移動だけを元の位置へ戻す（戻したファイルが元のパスに残る）"
+    then: "manifest.json は JSON として parse でき、undo
+      は中断前に完了した移動だけを元の位置へ戻す（戻したファイルが元のパスに残る）"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 3件目の移動で中断後 manifest.json が json.loads 可能で moves==2(:129-130)、undo
+      restored==2 かつ4件とも元パスに存在(:133-135)
+    evidence: tests/test_run.py:129
 
   - id: AC-075
     kind: functional
@@ -83,8 +118,14 @@ acceptance:
     then: "残りのファイルの処理を完了し、終了コード3を返す"
     priority: must
     verify: test
-    status: pending
-    attempts: 0
+    status: fail
+    attempts: 1
+    verified_at: 2026-09-24
+    note: then前半『残りのファイルの処理を完了』が未検証。テストは exit
+      3・extract.failed==1・INDEX.md存在のみを見ており、INDEX.md
+      は正常ファイルの有無に関係なく生成されうる。good.md が extract/classify/distill/plan
+      まで処理されたことのアサーションが無い（手動実行では classify.classified==1 等を確認できたが、テストの証拠にはならない）
+    evidence: tests/test_run.py:146
 
   - id: AC-076
     kind: functional
@@ -93,8 +134,13 @@ acceptance:
     then: "キャッシュ済み件数、未処理件数、推定コスト USD を JSON で標準出力に出力する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: scan後 status --json の stdout を JSON
+      parse、cached(extracted等4キー)・unprocessed.classify==2・estimate.cost_usd>0
+      を検証(:155-159)
+    evidence: tests/test_run.py:155
 
   - id: AC-077
     kind: functional
@@ -103,8 +149,15 @@ acceptance:
     then: "標準出力は単一の JSON ドキュメントとして parse でき、進捗表示は標準エラーに出力する"
     priority: must
     verify: test
-    status: pending
-    attempts: 0
+    status: fail
+    attempts: 1
+    verified_at: 2026-09-24
+    note: "(1)実装: dn init は DnError 時に --json でも stdout に何も書かない（init <存在しないdir>
+      --json で stdout 空・rc=2、JSON parse 不可）。cli.py の init は共通ランナーを通らず error JSON
+      を出さない。(2)テスト: tests/test_run.py:163 の parametrize は
+      scan/plan/run/status/undo/init のみで apply・distill・export を含まず、進捗の stderr
+      出力は plan/run でしか確認していない(:172-173)"
+    evidence: src/dn/cli.py:201
 
   - id: AC-078
     kind: functional
@@ -113,8 +166,14 @@ acceptance:
     then: "どのファイルも移動せず、終了コード1を返す"
     priority: must
     verify: test
-    status: pending
-    attempts: 0
+    status: fail
+    attempts: 1
+    verified_at: 2026-09-24
+    note: 確認プロンプトへの n 入力を検証していない。テストは Options.confirm に False
+      を返すラムダを注入しており、実際のプロンプト経路（src/dn/pipeline.py:197 の input() と y/yes
+      判定）を通らない。終了コードも DnError.exit_code==1 の確認のみでプロセス終了コードは未確認。isatty と input
+      を差し替えて n を与える、等の検証が必要
+    evidence: tests/test_run.py:188
 
   - id: AC-079
     kind: functional
@@ -123,8 +182,13 @@ acceptance:
     then: "`.dn/logs/<run_id>.log` にログを保存する"
     priority: should
     verify: test
-    status: pending
-    attempts: 0
+    status: fail
+    attempts: 1
+    verified_at: 2026-09-24
+    note: "(1)実装: dn init は Workspace.setup_logging を呼ばず .dn/logs/<run_id>.log
+      を作らない（手動実行で init 後に .dn/logs が存在しないことを確認）。(2)テスト: tests/test_run.py:198 は
+      scan 1コマンドのみで『任意のサブコマンド』を検証していない"
+    evidence: src/dn/cli.py:201
 
   - id: AC-068
     kind: functional
@@ -133,8 +197,14 @@ acceptance:
     then: "それぞれ全ファイルを連結した単一の .md、1行1ファイルの .jsonl、_knowledge/ 全体の .zip を生成する"
     priority: must
     verify: test
-    status: pending
-    attempts: 0
+    status: fail
+    attempts: 1
+    verified_at: 2026-09-24
+    note: "md形式の『全ファイルを連結』が未検証。テストは各ファイルの 'file: <path>'
+      見出しの存在と順序のみを確認し(:213-214)、各ファイル本文が .md
+      に含まれることをアサーションしていない（見出しだけ出力する実装でも通る）。jsonl(1行1ファイル, :217)と
+      zip(:220)は検証済み。jsonl の content も未確認"
+    evidence: tests/test_run.py:213
 
   - id: AC-101
     kind: functional
@@ -143,8 +213,12 @@ acceptance:
     then: "LLM の実呼び出し0件、manifest への移動記録の追記0件で終了し、`no changes` を出力する"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: 2回目 run --apply --yes で llm.generated==0・changes False・message=='no
+      changes'(:232)、manifest の moves 総数不変(:233)、apply 未実行(:234)
+    evidence: tests/test_run.py:232
 
   - id: AC-102
     kind: functional
@@ -153,8 +227,12 @@ acceptance:
     then: "確認待ちで停止せず、ファイルを移動しないまま `--yes` が必要な旨を出力して終了コード2を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: apply と run --apply の両方で stdin をパイプ(非TTY)にし --yes なしで実行、rc==2・stderr に
+      --yes・ツリー不変を確認(:245-248)。rc 2 は EOF 読み込み由来の 1 ではないため確認待ちに入っていない
+    evidence: tests/test_run.py:245
 
   - id: AC-103
     kind: functional
@@ -163,5 +241,9 @@ acceptance:
     then: "対象ファイルが無い旨のエラーを出力し、終了コード2を返す"
     priority: must
     verify: test
-    status: pending
+    status: pass
     attempts: 0
+    verified_at: 2026-09-24
+    note: plan.json 無しで apply --yes → rc 2 かつ 'no plan found'(:255)、manifest 無しで
+      undo → rc 2 かつ 'no manifest found'(:257)
+    evidence: tests/test_run.py:255

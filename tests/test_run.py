@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import sys
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -144,6 +146,15 @@ def test_partial_failure_exit_3(target: Path):
     assert code == 3
     assert out["extract"]["failed"] == 1
     assert (target / "organized/_knowledge/INDEX.md").is_file()
+    # the remaining file went through every later phase
+    assert (
+        out["classify"]["classified"] == 1
+    )  # good.md via the LLM (broken.docx is labelled misc without a call)
+    plan = json.loads((target / ".dn/cache/plan.json").read_text(encoding="utf-8"))
+    assert {pe["from"] for pe in plan["entries"]} == {"broken.docx", "good.md"}
+    assert out["distill"]["distilled"] == 1
+    sources = (target / "organized/_knowledge/sources.md").read_text(encoding="utf-8")
+    assert "good.md" in sources
 
 
 def test_status_json(target: Path):
@@ -159,18 +170,41 @@ def test_status_json(target: Path):
     assert set(out["cached"]) >= {"extracted", "labeled", "facts", "llm_responses"}
 
 
-@pytest.mark.parametrize(
-    "args", [["scan"], ["plan", "--dry-llm"], ["run", "--dry-llm"], ["status"], ["undo"], ["init"]]
-)
-def test_json_stdout_only(target: Path, args: list[str]):
-    """AC-077: with --json stdout is exactly one JSON document; progress goes to stderr."""
-    with_taxonomy(target)
-    write(target, "a.md", "# specs\n")
-    p = run_dn(args[0], str(target), *args[1:], "--json")
-    json.loads(p.stdout)  # the whole stdout parses as one document
-    assert p.stdout.strip().count("\n") == 0
-    if args[0] in ("plan", "run"):
-        assert "scan..." in p.stderr and "scan..." not in p.stdout
+def _command_sequence(root: Path) -> list[tuple[list[str], Any]]:
+    """Every subcommand once, in a workable order, each with --json."""
+    root.mkdir(parents=True, exist_ok=True)
+    seq = [
+        ["init"],
+        ["scan"],
+        ["plan", "--dry-llm"],
+        ["apply", "--yes"],
+        ["undo"],
+        ["distill", "--dry-llm"],
+        ["run", "--dry-llm"],
+        ["status"],
+        ["export", "--format", "md"],
+    ]
+    out = []
+    for args in seq:
+        if args[0] == "plan":
+            write(root, "a.md", "# specs specification\n\nbody\n")
+        out.append((args, run_dn(args[0], str(root), *args[1:], "--json")))
+    out.append((["init", "<missing dir>"], run_dn("init", str(root / "missing"), "--json")))
+    return out
+
+
+def test_json_stdout_only(tmp_path: Path):
+    """AC-077: with --json stdout is exactly one JSON document for every subcommand; progress goes to stderr."""
+    for args, p in _command_sequence(tmp_path / "t"):
+        doc = json.loads(p.stdout)  # the whole stdout parses as one document
+        assert isinstance(doc, dict), args
+        assert p.stdout.strip().count("\n") == 0, args
+        if args[0] in ("plan", "run", "distill"):
+            assert "scan..." in p.stderr and "scan..." not in p.stdout, args
+        if args[1:] == ["<missing dir>"]:
+            assert p.returncode == 2 and "not a directory" in doc["error"]
+        else:
+            assert p.returncode == 0, (args, p.stderr)
 
 
 def test_apply_prompt_declined(target: Path):
@@ -183,6 +217,30 @@ def test_apply_prompt_declined(target: Path):
     questions: list[str] = []
     from dn.errors import DnError
 
+    if os.name != "nt":  # the real prompt on a pseudo-terminal: type "n"
+        import pty
+
+        pid, fd = pty.fork()
+        if pid == 0:  # child
+            os.execv(sys.executable, [sys.executable, "-m", "dn.cli", "apply", str(target)])
+        buf = b""
+        while b"[y/N]" not in buf:
+            chunk = os.read(fd, 1024)
+            if not chunk:
+                break
+            buf += chunk
+        assert b"[y/N]" in buf
+        os.write(fd, b"n\n")
+        try:
+            while os.read(fd, 1024):
+                pass
+        except OSError:
+            pass
+        _, status = os.waitpid(pid, 0)
+        assert os.waitstatus_to_exitcode(status) == 1
+        assert tree_state(target) == before
+        assert not ws.manifest_path.exists()
+
     with pytest.raises(DnError) as ei:
         Pipeline(
             ws, Options(confirm=lambda q: (questions.append(q), False)[1], progress=lambda m: None)
@@ -192,13 +250,16 @@ def test_apply_prompt_declined(target: Path):
     assert not ws.manifest_path.exists()
 
 
-def test_run_log_file(target: Path):
-    """AC-079: every command writes .dn/logs/<run_id>.log."""
-    write(target, "a.md", "# a\n")
-    code, out = dn_json("scan", str(target))
-    log = target / ".dn" / "logs" / f"{out['run_id']}.log"
-    assert code == 0 and log.is_file()
-    assert Path(out["log"]) == log
+def test_run_log_file(tmp_path: Path):
+    """AC-079: every subcommand writes .dn/logs/<run_id>.log."""
+    root = tmp_path / "t"
+    for args, p in _command_sequence(root):
+        if args[1:] == ["<missing dir>"]:
+            continue
+        out = json.loads(p.stdout)
+        log = root / ".dn" / "logs" / f"{out['run_id']}.log"
+        assert log.is_file(), args
+        assert Path(out["log"]) == log
 
 
 def test_export_formats(tmp_path: Path):
@@ -212,12 +273,18 @@ def test_export_formats(tmp_path: Path):
     assert code == 0 and md["export"].endswith(".md")
     assert all(f"file: {f}" in text for f in files)
     assert text.index("file: INDEX.md") < text.index("file: overview.md")
+    for f in files:  # every file's full content is in the single .md
+        assert (kdir / f).read_text(encoding="utf-8") in text, f
     code, jl = dn_json("export", str(root), "--format", "jsonl")
     lines = [json.loads(ln) for ln in Path(jl["export"]).read_text(encoding="utf-8").splitlines()]
     assert code == 0 and sorted(x["path"] for x in lines) == files
+    for x in lines:
+        assert x["content"] == (kdir / x["path"]).read_text(encoding="utf-8")
     code, zp = dn_json("export", str(root), "--format", "zip")
     with zipfile.ZipFile(zp["export"]) as z:
         assert sorted(n.removeprefix("_knowledge/") for n in z.namelist()) == files
+        for f in files:
+            assert z.read(f"_knowledge/{f}") == (kdir / f).read_bytes()
     assert dn_json("export", str(root), "--format", "pdf")[0] == 2
 
 
