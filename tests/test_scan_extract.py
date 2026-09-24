@@ -262,8 +262,6 @@ def test_extract_image_vision_and_no_images(tmp_path: Path):
         )
     meta, text2 = _text_for(ws2, "diagram.png")
     assert meta.quality == "none" and text2.strip() == ""
-    cli = run_dn("plan", str(b), "--no-images", "--dry-llm", "--json")
-    assert cli.returncode == 0
 
 
 def test_extract_truncates_large_text(target: Path):
@@ -320,3 +318,28 @@ def test_scan_confirms_head_hash_collisions(target: Path):
     assert inv["a.bin"].hash_mode == "full" and inv["b.bin"].hash_mode == "full"
     assert inv["c.bin"].hash_mode == "head4m"
     assert res.duplicates == {}
+
+
+def test_no_images_cli_flag(tmp_path: Path):
+    """AC-024: through the real CLI, `dn plan --no-images` sends no image while the same run without it does."""
+    png = (SAMPLE_TREE / "specs/er-diagram.png").read_bytes()
+    results = {}
+    for flag in ("with-flag", "without-flag"):
+        root = tmp_path / flag
+        write(root, "diagram.png", png)
+        write(root, "notes.md", "# specs specification\n\ntext\n")
+        with_taxonomy(root)
+        extra = ["--no-images"] if flag == "with-flag" else []
+        p = run_dn("plan", str(root), "--dry-llm", "--json", *extra)
+        assert p.returncode == 0, p.stderr
+        out = json.loads(p.stdout)
+        ws = open_ws(root)
+        meta, text = _text_for(ws, "diagram.png")
+        results[flag] = (out, meta, text)
+    out_on, meta_on, text_on = results["with-flag"]
+    out_off, meta_off, text_off = results["without-flag"]
+    # without the flag the image goes to the (dry) vision call and its answer becomes the text
+    assert meta_off.quality == "vision" and "(dry-llm) image diagram.png" in text_off
+    # with the flag nothing is sent: no vision output, one LLM generation fewer
+    assert meta_on.quality == "none" and text_on.strip() == ""
+    assert out_off["llm"]["generated"] == out_on["llm"]["generated"] + 1
