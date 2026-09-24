@@ -1,4 +1,4 @@
-# @covers AC-040, AC-041, AC-042, AC-043, AC-073
+# @covers AC-040, AC-041, AC-042, AC-043, AC-073, AC-106, AC-107, AC-108, AC-109, AC-113, AC-114, AC-115, AC-116, AC-117
 """Phase 3: LLM classification into the taxonomy, and taxonomy proposal (§5.3, §6.1, §6.2)."""
 
 from __future__ import annotations
@@ -11,12 +11,14 @@ import random
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pathspec
 import yaml
 
 from dn.config import Taxonomy
 from dn.extract import read_extracted, text_path
-from dn.llm import LLM
-from dn.schemas import InventoryEntry, Label, LabelRecord, TaxonomyProposal
+from dn.llm import LLM, LLMSchemaError
+from dn.scan import gitignore_spec
+from dn.schemas import BatchLabel, BatchLabels, InventoryEntry, Label, LabelRecord, TaxonomyProposal
 from dn.workspace import Workspace, append_jsonl, atomic_write_text, read_jsonl
 
 log = logging.getLogger("dn.classify")
@@ -94,7 +96,84 @@ class ClassifyStats:
     classified: int = 0
     cached: int = 0
     failed: int = 0
+    by_rule: int = 0
+    batches: int = 0
     low_confidence: list[str] = field(default_factory=list)
+
+
+@dataclass
+class _Item:
+    h: str
+    entry: InventoryEntry
+    type: str
+    lang: str
+    head: str
+
+    def describe(self) -> str:
+        e = self.entry
+        return (
+            f"File name: {Path(e.path).name}\nPath: {e.path}\nType: {self.type}\n"
+            f"Size: {e.size} bytes\nLanguage: {self.lang}\n\n"
+            f"--- content (first {HEAD_CHARS} chars) ---\n{self.head}"
+        )
+
+
+def _rule_specs(ws: Workspace) -> list[tuple[str, str, pathspec.PathSpec]]:  # type: ignore[type-arg]
+    """(glob, category, matcher) for every usable rule, in config order."""
+    specs = []
+    for r in ws.config.rules:
+        if r.category != "misc" and (ws.taxonomy is None or ws.taxonomy.get(r.category) is None):
+            continue  # reported by check_rules()
+        specs.append((r.glob, r.category, gitignore_spec([r.glob])))
+    return specs
+
+
+def rule_labels(ws: Workspace, entries: list[InventoryEntry]) -> dict[str, tuple[InventoryEntry, Label]]:
+    """AS-040: labels decided by config rules, per content hash (first matching path, first rule)."""
+    specs = _rule_specs(ws)
+    out: dict[str, tuple[InventoryEntry, Label]] = {}
+    if not specs:
+        return out
+    for e in sorted(entries, key=lambda x: x.path):
+        if not e.hash or e.hash in out:
+            continue
+        for glob, category, spec in specs:
+            if spec.match_file(e.path):
+                out[e.hash] = (
+                    e,
+                    Label(
+                        category=category,
+                        confidence=1.0,
+                        title=Path(e.path).name[:80],
+                        summary=f"Classified by rule `{glob}`."[:200],
+                        tags=[],
+                        has_domain_knowledge=category != "misc",
+                    ),
+                )
+                break
+    return out
+
+
+# @assumption AS-038
+def _batches(items: list[_Item], size: int, max_chars: int) -> list[list[_Item]]:
+    """AS-038: greedy, path-ordered batches bounded by count and total content chars."""
+    batches: list[list[_Item]] = []
+    cur: list[_Item] = []
+    chars = 0
+    for it in items:
+        if cur and (len(cur) >= size or chars + len(it.head) > max_chars):
+            batches.append(cur)
+            cur, chars = [], 0
+        cur.append(it)
+        chars += len(it.head)
+    if cur:
+        batches.append(cur)
+    return batches
+
+
+def batch_max_tokens(n: int) -> int:
+    # @assumption AS-039
+    return min(8000, 500 * n + 500)
 
 
 async def classify(ws: Workspace, entries: list[InventoryEntry], llm: LLM) -> ClassifyStats:
@@ -105,11 +184,11 @@ async def classify(ws: Workspace, entries: list[InventoryEntry], llm: LLM) -> Cl
     context = taxonomy_context(tax)
     categories = tax.slugs if tax else []
     stats = ClassifyStats()
-    file_sem = asyncio.Semaphore(ws.config.concurrency)
+    sem = asyncio.Semaphore(ws.config.concurrency)
 
-    # one call per content hash; duplicates share the label (§5.3)
+    # one label per content hash; duplicates share the label (§5.3)
     firsts: dict[str, InventoryEntry] = {}
-    for e in entries:
+    for e in sorted(entries, key=lambda x: x.path):
         if e.hash and e.hash not in firsts:
             firsts[e.hash] = e
 
@@ -118,43 +197,112 @@ async def classify(ws: Workspace, entries: list[InventoryEntry], llm: LLM) -> Cl
         append_jsonl(ws.labels_path, {**rec.model_dump(mode="json"), "taxonomy_key": key})
         done[h] = rec
 
-    async def one(h: str, e: InventoryEntry) -> None:
-        tp = text_path(ws, h)
-        if e.skipped or not tp.exists():
-            save(h, e, _unextractable_label(e), None)
-            return
-        meta, body = read_extracted(tp)
-        head = body[:HEAD_CHARS]
-        content = (
-            f"File name: {Path(e.path).name}\nPath: {e.path}\nType: {meta.type}\n"
-            f"Size: {e.size} bytes\nLanguage: {meta.lang}\n\n--- content (first {HEAD_CHARS} chars) ---\n{head}"
-        )
-        async with file_sem:
-            try:
-                label = await llm.structured(
-                    "classify",
-                    "classify",
-                    Label,
-                    content,
-                    dry=lambda: _dry_label(tax, head, Path(e.path).name),
-                    schema_overrides={"categories": categories},
-                    shared_context=context,
-                    validate=lambda lb: _check_category(lb, categories),
-                )
-            except Exception as exc:
-                stats.failed += 1
-                ws.record_error(e.path, "classify", exc)
-                return
+    def record(it: _Item, label: Label) -> None:
         llm_category = label.category
         if label.confidence < threshold and label.category != "misc":
             label = label.model_copy(update={"category": "misc", "subcategory": None})
-            stats.low_confidence.append(e.path)
-        save(h, e, label, llm_category)
+            stats.low_confidence.append(it.entry.path)
+        save(it.h, it.entry, label, llm_category)
         stats.classified += 1
 
-    todo = [(h, e) for h, e in firsts.items() if h not in done]
-    stats.cached = len(firsts) - len(todo)
-    await asyncio.gather(*(one(h, e) for h, e in todo))
+    # 1. rules: no LLM, re-evaluated every run and preferred over stored labels
+    ruled = rule_labels(ws, entries)
+    for h, (e, label) in ruled.items():
+        prev = done.get(h)
+        if prev is None or prev.label != label:
+            save(h, e, label, None)
+            stats.by_rule += 1
+
+    # 2. what still needs the LLM
+    items: list[_Item] = []
+    for h, e in firsts.items():
+        if h in ruled or h in done:
+            continue
+        tp = text_path(ws, h)
+        if e.skipped or not tp.exists():
+            save(h, e, _unextractable_label(e), None)
+            continue
+        meta, body = read_extracted(tp)
+        items.append(_Item(h, e, meta.type, meta.lang, body[:HEAD_CHARS]))
+    stats.cached = len(firsts) - len(items) - len([h for h in ruled if h in firsts])
+
+    async def single(it: _Item) -> None:
+        try:
+            label = await llm.structured(
+                "classify",
+                "classify",
+                Label,
+                it.describe(),
+                dry=lambda: _dry_label(tax, it.head, Path(it.entry.path).name),
+                schema_overrides={"categories": categories},
+                shared_context=context,
+                validate=lambda lb: _check_category(lb, categories),
+            )
+        except Exception as exc:
+            stats.failed += 1
+            ws.record_error(it.entry.path, "classify", exc)
+            return
+        record(it, label)
+
+    async def batch(group: list[_Item]) -> None:
+        ids = {f"F{i + 1}": it for i, it in enumerate(group)}
+        content = "\n\n".join(f"=== file_id: {fid} ===\n{it.describe()}" for fid, it in ids.items())
+
+        def check(res: BatchLabels) -> None:
+            got = [lb.file_id for lb in res.labels]
+            missing = sorted(set(ids) - set(got))
+            extra = sorted({g for g in got if g not in ids} | {g for g in got if got.count(g) > 1})
+            if missing or extra:
+                raise ValueError(
+                    f"every file_id must appear exactly once; missing {missing}, unknown/duplicated {extra}"
+                )
+            for lb in res.labels:
+                _check_category(lb, categories)
+
+        def dry() -> BatchLabels:
+            return BatchLabels(
+                labels=[
+                    BatchLabel(file_id=fid, **_dry_label(tax, it.head, Path(it.entry.path).name).model_dump())
+                    for fid, it in ids.items()
+                ]
+            )
+
+        try:
+            res = await llm.structured(
+                "classify",
+                "classify_batch",
+                BatchLabels,
+                content,
+                dry=dry,
+                schema_overrides={"categories": categories},
+                shared_context=context,
+                validate=check,
+                max_tokens=batch_max_tokens(len(group)),
+            )
+        except LLMSchemaError as exc:
+            # @assumption AS-039 - fall back to one call per file
+            log.info("batch of %d failed validation twice (%s); classifying one by one", len(group), exc)
+            for it in group:
+                await single(it)
+            return
+        except Exception as exc:
+            for it in group:
+                stats.failed += 1
+                ws.record_error(it.entry.path, "classify", exc)
+            return
+        for lb in res.labels:  # saved together once the whole batch validated
+            record(ids[lb.file_id], Label.model_validate(lb.model_dump(exclude={"file_id"})))
+
+    async def run(group: list[_Item]) -> None:
+        async with sem:
+            stats.batches += 1
+            if len(group) == 1:
+                await single(group[0])
+            else:
+                await batch(group)
+
+    groups = _batches(items, ws.config.classify_batch_size, ws.config.classify_batch_chars)
+    await asyncio.gather(*(run(g) for g in groups))
     return stats
 
 

@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 from conftest import (
     FakeClient,
+    batch_aware,
     dn_json,
     label,
     make_llm,
@@ -52,7 +53,7 @@ def _prepare(
                 return lab
         return label("misc", 0.2)
 
-    client = FakeClient(handler)
+    client = FakeClient(batch_aware(handler))
     asyncio.run(classify(ws, entries, make_llm(root / ".dn", client)))
     return ws, entries, client
 

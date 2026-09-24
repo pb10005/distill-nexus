@@ -43,6 +43,8 @@ CLI, read its `--json` output, summarize it for the user, and get their approval
    - Exit 3: some files failed (e.g. locked by another program); list them from `.dn/errors.jsonl`.
    - Exit 1: pre-flight validation failed (files changed since the plan); nothing moved. Rerun step 3.
    - Without a TTY `dn apply` requires `--yes`; never add `--yes` before the user approved.
+   Images and scanned PDF pages are not sent to the API unless the user asks for `--images`
+   (or sets `images: true`); if the plan shows many image files classified as `misc`, offer `--images`.
 6. **Knowledge base.** `dn distill <dir> --json` builds `<dir>/organized/_knowledge/`. Tell the user
    to start from `INDEX.md`. `dn export <dir> --format md` bundles it into one file to paste into a chat.
 

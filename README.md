@@ -34,10 +34,22 @@ dn export ~/Documents/inbox --format md|jsonl|zip
 ```
 
 主なオプション: `--out DIR` `--copy` `--rename` `--dedupe move|trash|keep` `--model` `--synth-model`
-`--concurrency N` `--max-cost USD` `--lang ja|en|auto` `--json` `--interactive` `--no-images`
+`--concurrency N` `--max-cost USD` `--lang ja|en|auto` `--json` `--interactive` `--images`
 `--dry-llm`（API を呼ばずスキーマ準拠のダミー。配線確認用）`-v/-vv`
 
 終了コード: 0 成功 / 1 一般エラー / 2 設定・引数 / 3 一部ファイル失敗 / 4 コスト上限超過
+
+## LLM 呼び出しを減らす設定（`.dn/config.yaml`）
+
+```yaml
+classify_batch_size: 10     # 1回の分類呼び出しにまとめるファイル数（本文合計 24,000 文字まで）
+images: false               # true / --images で画像とスキャン PDF 頁を Claude vision に送る（既定は送らない）
+rules:                      # LLM を呼ばずに決める分類（gitignore 構文、最初に一致したもの）
+  - glob: "*.log"
+    category: misc
+  - glob: "contracts/**"
+    category: contracts
+```
 
 ## パイプライン
 

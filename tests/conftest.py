@@ -215,6 +215,38 @@ def tree_state(root: Path, exclude: tuple[str, ...] = (".dn", "organized")) -> d
     return out
 
 
+def batch_sections(req: dict[str, Any]) -> list[tuple[str, str]]:
+    """(file_id, section text) pairs of a submit_classify_batch request."""
+    import re as _re
+
+    text = user_text(req)
+    parts = _re.split(r"^=== file_id: (\S+) ===$", text, flags=_re.M)
+    return [(parts[i], parts[i + 1]) for i in range(1, len(parts) - 1, 2)]
+
+
+def batch_aware(single: Callable[[dict[str, Any], int], Any]) -> Callable[[dict[str, Any], int], Any]:
+    """Answer submit_classify_batch by asking ``single`` once per file section."""
+
+    def handler(req: dict[str, Any], n: int) -> Any:
+        if tool_of(req) != "submit_classify_batch":
+            return single(req, n)
+        labels = []
+        for fid, section in batch_sections(req):
+            item_schema = req["tools"][0]["input_schema"]["properties"]["labels"]["items"]
+            fake = {
+                **req,
+                "tools": [{**req["tools"][0], "name": "submit_classify", "input_schema": item_schema}],
+                "messages": [{"role": "user", "content": section}],
+            }
+            out = single(fake, n)
+            if isinstance(out, BaseException):
+                return out
+            labels.append({"file_id": fid, **out})
+        return {"labels": labels}
+
+    return handler
+
+
 def smart_handler(overrides: dict[str, Any] | None = None) -> Callable[[dict[str, Any], int], Any]:
     """Valid output for every dn tool; ``overrides[tool]`` may be a value or ``fn(req, n)``."""
     overrides = overrides or {}
@@ -283,7 +315,7 @@ def smart_handler(overrides: dict[str, Any] | None = None) -> Callable[[dict[str
             }
         raise AssertionError(f"unexpected tool {tool}")
 
-    return handler
+    return handler if "submit_classify_batch" in overrides else batch_aware(handler)
 
 
 def make_pdf(text: str) -> bytes:

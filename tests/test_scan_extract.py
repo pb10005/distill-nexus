@@ -231,7 +231,7 @@ def test_extract_html_and_code(target: Path):
 
 
 def test_extract_image_vision_and_no_images(tmp_path: Path):
-    """AC-024: images go to the LLM and the transcript is stored; with --no-images nothing is sent."""
+    """AC-024: with images enabled the image goes to the LLM and the transcript is stored; by default nothing is sent."""
     png = (SAMPLE_TREE / "specs/er-diagram.png").read_bytes()
     a = tmp_path / "a"
     write(a, "diagram.png", png)
@@ -250,7 +250,7 @@ def test_extract_image_vision_and_no_images(tmp_path: Path):
     client2 = FakeClient(smart_handler())
     ws2 = open_ws(b)
     report = asyncio.run(
-        Pipeline(ws2, Options(no_images=True, llm_client=client2, progress=lambda m: None)).cmd_plan()
+        Pipeline(ws2, Options(llm_client=client2, progress=lambda m: None)).cmd_plan()  # default: images off
     )
     assert report.exit_code == 0
     assert [tool_of(r) for r in client2.requests if tool_of(r) == "submit_vision"] == []
@@ -320,26 +320,24 @@ def test_scan_confirms_head_hash_collisions(target: Path):
     assert res.duplicates == {}
 
 
-def test_no_images_cli_flag(tmp_path: Path):
-    """AC-024: through the real CLI, `dn plan --no-images` sends no image while the same run without it does."""
+def test_images_cli_flag(tmp_path: Path):
+    """AC-024: through the real CLI, `dn plan --images` sends the image while the default (and --no-images) does not."""
     png = (SAMPLE_TREE / "specs/er-diagram.png").read_bytes()
     results = {}
-    for flag in ("with-flag", "without-flag"):
+    for flag, extra in (("images", ["--images"]), ("default", []), ("no-images", ["--no-images"])):
         root = tmp_path / flag
         write(root, "diagram.png", png)
         write(root, "notes.md", "# specs specification\n\ntext\n")
         with_taxonomy(root)
-        extra = ["--no-images"] if flag == "with-flag" else []
         p = run_dn("plan", str(root), "--dry-llm", "--json", *extra)
         assert p.returncode == 0, p.stderr
         out = json.loads(p.stdout)
-        ws = open_ws(root)
-        meta, text = _text_for(ws, "diagram.png")
+        meta, text = _text_for(open_ws(root), "diagram.png")
         results[flag] = (out, meta, text)
-    out_on, meta_on, text_on = results["with-flag"]
-    out_off, meta_off, text_off = results["without-flag"]
-    # without the flag the image goes to the (dry) vision call and its answer becomes the text
-    assert meta_off.quality == "vision" and "(dry-llm) image diagram.png" in text_off
-    # with the flag nothing is sent: no vision output, one LLM generation fewer
-    assert meta_on.quality == "none" and text_on.strip() == ""
-    assert out_off["llm"]["generated"] == out_on["llm"]["generated"] + 1
+    out_on, meta_on, text_on = results["images"]
+    # with --images the image goes to the (dry) vision call and its answer becomes the text
+    assert meta_on.quality == "vision" and "(dry-llm) image diagram.png" in text_on
+    for flag in ("default", "no-images"):  # nothing sent: no vision output, one LLM generation fewer
+        out_off, meta_off, text_off = results[flag]
+        assert meta_off.quality == "none" and text_off.strip() == ""
+        assert out_on["llm"]["generated"] == out_off["llm"]["generated"] + 1

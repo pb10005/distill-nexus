@@ -1,4 +1,4 @@
-# @covers AC-001, AC-002, AC-003, AC-004, AC-011, AC-012, AC-048, AC-077, AC-078, AC-079, AC-102, AC-103
+# @covers AC-024, AC-110, AC-111, AC-112, AC-001, AC-002, AC-003, AC-004, AC-011, AC-012, AC-048, AC-077, AC-078, AC-079, AC-102, AC-103
 """``dn`` command line (typer). ``--json`` writes exactly one JSON document to stdout;
 progress and logs go to stderr / ``.dn/logs/<run_id>.log``."""
 
@@ -63,7 +63,13 @@ RenameOpt = Annotated[
 ]
 DedupeOpt = Annotated[str | None, typer.Option("--dedupe", help="move | trash | keep")]
 InterOpt = Annotated[bool, typer.Option("--interactive", help="Confirm low-confidence files one by one")]
-ImagesOpt = Annotated[bool, typer.Option("--no-images", help="Never send images to the API")]
+ImagesOpt = Annotated[
+    bool | None,
+    typer.Option(
+        "--images/--no-images",
+        help="Send images and scanned PDF pages to Claude vision (default: config `images`, off)",
+    ),
+]
 LinksOpt = Annotated[bool, typer.Option("--follow-symlinks", help="Follow symbolic links while scanning")]
 HiddenOpt = Annotated[bool, typer.Option("--include-hidden", help="Include hidden files")]
 FullHashOpt = Annotated[
@@ -265,7 +271,7 @@ def plan(
     rename: RenameOpt = None,
     dedupe: DedupeOpt = None,
     interactive: InterOpt = False,
-    no_images: ImagesOpt = False,
+    images: ImagesOpt = None,
     follow_symlinks: LinksOpt = False,
     include_hidden: HiddenOpt = False,
     full_hash: FullHashOpt = False,
@@ -283,7 +289,7 @@ def plan(
         rename=rename,
         dedupe=dedupe,
         interactive=interactive,
-        no_images=no_images,
+        images=images,
         follow_symlinks=follow_symlinks,
         include_hidden=include_hidden,
         full_hash=full_hash,
@@ -330,7 +336,7 @@ def distill_cmd(
     concurrency: ConcOpt = None,
     max_cost: CostOpt = None,
     lang: LangOpt = None,
-    no_images: ImagesOpt = False,
+    images: ImagesOpt = None,
     distill_all: DistillAllOpt = False,
 ) -> None:
     """Extract knowledge and (re)generate _knowledge/."""
@@ -343,7 +349,7 @@ def distill_cmd(
         concurrency=concurrency,
         max_cost=max_cost,
         lang=lang,
-        no_images=no_images,
+        images=images,
         distill_all=distill_all,
     )
     _execute(
@@ -376,7 +382,7 @@ def run(
     rename: RenameOpt = None,
     dedupe: DedupeOpt = None,
     interactive: InterOpt = False,
-    no_images: ImagesOpt = False,
+    images: ImagesOpt = None,
     distill_all: DistillAllOpt = False,
     follow_symlinks: LinksOpt = False,
     include_hidden: HiddenOpt = False,
@@ -396,7 +402,7 @@ def run(
         rename=rename,
         dedupe=dedupe,
         interactive=interactive,
-        no_images=no_images,
+        images=images,
         distill_all=distill_all,
         yes=yes,
         follow_symlinks=follow_symlinks,
@@ -462,10 +468,11 @@ def status(
     no_color: NoColorOpt = False,
     model: ModelOpt = None,
     synth_model: SynthOpt = None,
+    images: ImagesOpt = None,
 ) -> None:
     """Cache state, unprocessed counts and estimated cost."""
     ctx = Ctx(json_out, verbose, no_color)
-    opts = _options(ctx, model=model, synth_model=synth_model)
+    opts = _options(ctx, model=model, synth_model=synth_model, images=images)
     _execute(
         ctx,
         target,
