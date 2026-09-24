@@ -4,7 +4,8 @@ id: FEAT-002
 title: "Distill Nexus scan / extract フェーズ"
 status: frozen
 
-intent: "対象ディレクトリの雑多なファイルを安全に列挙・ハッシュ化し、形式ごとの抽出器で正規化Markdownへ変換して、後続の分類と知識抽出が同じテキストを共有できるようにする。"
+intent: "対象ディレクトリの雑多なファイルを安全に列挙・ハッシュ化し、形式ごとの抽出器で正規化Markdownへ変換して、後続の分類と知識抽出が同じテ\
+  キストを共有できるようにする。"
 
 out_of_scope:
   - "動画・音声・実行バイナリからのテキスト抽出（scan で列挙し misc 扱いにするのみ）"
@@ -15,33 +16,40 @@ out_of_scope:
 
 assumptions:
   - id: AS-005
-    statement: "`.dnignore` の解釈には `pathspec` ライブラリ（純Python）を使う。§2 の依存表に無いが §5.1 で名指しされているため追加する"
+    statement: "`.dnignore` の解釈には `pathspec` ライブラリ（純Python）を使う。§2 の依存表に無いが §5.1
+      で名指しされているため追加する"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-006
-    statement: "HTML の本文抽出には `beautifulsoup4` を使い、trafilatura は採用しない（依存を軽く保つ）。script/style/nav/footer 要素を除去し、見出しは Markdown 見出しへ変換する"
+    statement: "HTML の本文抽出には `beautifulsoup4` を使い、trafilatura
+      は採用しない（依存を軽く保つ）。script/style/nav/footer 要素を除去し、見出しは Markdown 見出しへ変換する"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-007
-    statement: "言語判定（lang）は抽出テキスト中のひらがな・カタカナ・漢字の比率が 20% 以上なら ja、それ未満で英字があれば en、判定不能なら und とする。外部の言語判定ライブラリは使わない"
+    statement: "言語判定（lang）は抽出テキスト中のひらがな・カタカナ・漢字の比率が 20% 以上なら ja、それ未満で英字があれば
+      en、判定不能なら und とする。外部の言語判定ライブラリは使わない"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-008
-    statement: "puremagic が拡張子と異なる種別を返した場合、magic 側がテキスト系以外（画像・PDF・Office zip）のときのみ magic を優先する。テキスト系拡張子で magic 判定が取れない場合は拡張子に従う（プレーンテキストは magic を持たないため）"
+    statement: "puremagic が拡張子と異なる種別を返した場合、magic 側がテキスト系以外（画像・PDF・Office zip）のときのみ
+      magic を優先する。テキスト系拡張子で magic 判定が取れない場合は拡張子に従う（プレーンテキストは magic を持たないため）"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
 
   - id: AS-025
-    statement: "`--no-images` は画像ファイルに加え、スキャンPDFの低文字数頁の画像化OCRも止める。その頁は空テキストとし quality: text のまま記録する"
+    statement: "vision 無効時（FEAT-009 以降の既定）は画像ファイルの本文を空（quality: none）とし、スキャン PDF
+      の低文字数頁は画像化せず pymupdf が抽出できたテキストのままとする（quality: text）"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-032
-    statement: "コードの抽出結果には指示書 §5.2（先頭200行 + docstring/コメント + 関数・クラス名一覧）に従いコメント行も最大300件含める。docstring と定義名は正規表現で拾い、構文木（ast / tree-sitter）は使わない"
+    statement: "コードの抽出結果には指示書 §5.2（先頭200行 + docstring/コメント +
+      関数・クラス名一覧）に従いコメント行も最大300件含める。docstring と定義名は正規表現で拾い、構文木（ast /
+      tree-sitter）は使わない"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -49,15 +57,25 @@ assumptions:
 open_questions:
   - id: OQ-001
     from: AC-024
-    question: "2回の修正で AC-024 が満たせない。受入基準自体が誤っている / 前提が欠けている可能性がある。最新の失敗: 前者(画像送信: image ブロック/media_type/データ一致、文字起こし保存)と、Options(no_images=True) を直接与えた Pipeline での画像非送信は検証済み。ただし when の --no-images は依然 CLI フラグ経由で挙動を確認していない: :257 の run_dn('plan', --no-images, --dry-llm) は returncode==0 しか見ておらず、フラグ無しでも rc=0 になる（手動確認）ため判別力が無い。src/dn/cli.py:286 の no_images=no_images を削っても本テストは通る"
+    question: "2回の修正で AC-024 が満たせない。受入基準自体が誤っている / 前提が欠けている可能性がある。最新の失敗: 前者(画像送信:
+      image ブロック/media_type/データ一致、文字起こし保存)と、Options(no_images=True) を直接与えた
+      Pipeline での画像非送信は検証済み。ただし when の --no-images は依然 CLI フラグ経由で挙動を確認していない:
+      :257 の run_dn('plan', --no-images, --dry-llm) は returncode==0
+      しか見ておらず、フラグ無しでも rc=0 になる（手動確認）ため判別力が無い。src/dn/cli.py:286 の
+      no_images=no_images を削っても本テストは通る"
     raised: 2026-09-24
     status: resolved
-    resolution: "人間の指示（2026-09-24）でテストを強化: tests/test_scan_extract.py の test_no_images_cli_flag が実 CLI の --no-images 有無で挙動差を検証。verifier が pass と判定"
+    resolution: "人間の指示（2026-09-24）でテストを強化: tests/test_scan_extract.py の
+      test_no_images_cli_flag が実 CLI の --no-images 有無で挙動差を検証。verifier が pass
+      と判定"
 
 acceptance:
   - id: AC-014
     kind: functional
-    given: "`.git/` `node_modules/` `__pycache__/` `.dn/` `.DS_Store` `Thumbs.db` `desktop.ini` `~$tmp.docx` と隠しファイル、`.dnignore` と config の exclude に一致するファイル、出力先の `organized/_knowledge/` `organized/_duplicates/` `organized/manifest.json`、通常ファイル3件を含むディレクトリ"
+    given: "`.git/` `node_modules/` `__pycache__/` `.dn/` `.DS_Store` `Thumbs.db`
+      `desktop.ini` `~$tmp.docx` と隠しファイル、`.dnignore` と config の exclude
+      に一致するファイル、出力先の `organized/_knowledge/` `organized/_duplicates/`
+      `organized/manifest.json`、通常ファイル3件を含むディレクトリ"
     when: "`dn scan` を実行する"
     then: "`.dn/cache/inventory.jsonl` に通常ファイル3件だけを記録する"
     priority: must
@@ -65,7 +83,8 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: given の除外対象をすべて配置し、inventory がちょうど通常ファイル3件であることと files==3 を検証。pytest 15 passed
+    note: given の除外対象をすべて配置し、inventory がちょうど通常ファイル3件であることと files==3 を検証。pytest 15
+      passed
     evidence: tests/test_scan_extract.py:32
 
   - id: AC-015
@@ -85,20 +104,23 @@ acceptance:
     kind: functional
     given: "内容が同一でファイル名が異なる2ファイル"
     when: "`dn scan --json` を実行する"
-    then: "両者に同じ blake2b ハッシュを記録し、重複候補として出力する。各エントリに hash_mode（先頭4MB方式は head4m、全量は full）を記録する"
+    then: "両者に同じ blake2b ハッシュを記録し、重複候補として出力する。各エントリに hash_mode（先頭4MB方式は head4m、全量は
+      full）を記録する"
     priority: must
     verify: test
     status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: CLI scan --json 経由で同一ハッシュ・duplicates 出力・hash_mode(full) を検証し、hashlib.blake2b(digest_size=20) の期待値と digest を照合(:106-108)。pytest 通過
+    note: CLI scan --json 経由で同一ハッシュ・duplicates 出力・hash_mode(full)
+      を検証し、hashlib.blake2b(digest_size=20) の期待値と digest を照合(:106-108)。pytest 通過
     evidence: tests/test_scan_extract.py:94
 
   - id: AC-017
     kind: functional
     given: "前回の scan 以降に mtime とサイズが変わっていないファイル"
     when: "`dn scan` を再実行する"
-    then: "そのファイルのハッシュを再計算せず前回の値を再利用し（hash_computed=0 を出力する）、前回以降に削除されたファイルは inventory から除去する"
+    then: "そのファイルのハッシュを再計算せず前回の値を再利用し（hash_computed=0 を出力する）、前回以降に削除されたファイルは
+      inventory から除去する"
     priority: must
     verify: test
     status: pass
@@ -137,7 +159,8 @@ acceptance:
     kind: functional
     given: "抽出対象の任意の形式のファイル"
     when: "extract を実行する"
-    then: "出力Markdownの先頭に source, type, pages, chars, lang, quality を持つ YAML frontmatter を出力する"
+    then: "出力Markdownの先頭に source, type, pages, chars, lang, quality を持つ YAML
+      frontmatter を出力する"
     priority: must
     verify: test
     status: pass
@@ -156,12 +179,14 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: "docx の GFM 表、xlsx は250行シートのうち200行を表示し残り50行と明記、pptx のスライド番号とノート本文（fixture のノートは Mention the incident / Owner: platform）を検証"
+    note: "docx の GFM 表、xlsx は250行シートのうち200行を表示し残り50行と明記、pptx のスライド番号とノート本文（fixture
+      のノートは Mention the incident / Owner: platform）を検証"
     evidence: tests/test_scan_extract.py:148
 
   - id: AC-022
     kind: functional
-    given: "テキスト層のある頁と、文字数50未満の頁が混在する PDF"
+    given: "テキスト層のある頁と、文字数50未満の頁が混在する PDF（images 有効: --images または config の images:
+      true）"
     when: "extract を実行する"
     then: "文字数50未満の頁だけを画像化して LLM の OCR に渡し、quality: mixed を記録する"
     priority: must
@@ -169,8 +194,9 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: fixture の PDF は p1 171文字 / p2 0文字。vision 要求はちょうど1回で p2 の PNG のみ、quality mixed、OCR テキストと p1 テキストの両方を検証
-    evidence: tests/test_scan_extract.py:170
+    note: want_images=True の extract で呼び出し1件(p2の画像のみ、submit_vision)、quality
+      mixed・OCR文と既存テキスト両方を本文に含むことをアサート。テスト通過
+    evidence: tests/test_scan_extract.py:189
 
   - id: AC-023
     kind: functional
@@ -182,21 +208,23 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: HTML は script/style/nav の除去と本文を、コードは300行中200行・docstring・def/class 一覧・残り行数を検証
+    note: HTML は script/style/nav の除去と本文を、コードは300行中200行・docstring・def/class
+      一覧・残り行数を検証
     evidence: tests/test_scan_extract.py:187
 
   - id: AC-024
     kind: functional
     given: "PNG 画像ファイル"
-    when: "`--no-images` を付けずに extract を実行する / `--no-images` を付けて実行する"
+    when: "`--images` を付けて extract を実行する / `--images` を付けずに（既定で）実行する"
     then: "前者は LLM に画像を送信し、応答の文字起こしを本文として保存する。後者は LLM に画像を送信しない"
     priority: must
     verify: test
     status: pass
-    attempts: 2
+    attempts: 0
     verified_at: 2026-09-24
-    note: "前者: :233 で image ブロック/media_type=image/png/base64データ一致と文字起こし保存を検証。後者: :253 Options(no_images=True) でリクエストに image ブロック無し・submit_vision 無し。CLI経路: :323 で実CLI dn plan を --no-images 有/無で比較し quality none vs vision、generated 差1 を検証。src/dn/cli.py:286 を no_images=False に一時変異すると :344 で失敗する(判別力確認済み、復元済み)。pytest tests/test_scan_extract.py 16 passed"
-    evidence: tests/test_scan_extract.py:323
+    note: images有効時に画像バイト一致で送信・文字起こし保存(233)、既定で送信0件・quality none(233後半)、実CLIで
+      --images/既定/--no-images の差をアサート(tests/test_scan_extract.py:323)。テスト通過
+    evidence: tests/test_scan_extract.py:233
 
   - id: AC-025
     kind: functional
@@ -215,13 +243,15 @@ acceptance:
     kind: functional
     given: "破損した docx（zip として不正なバイト列）を含む複数ファイル"
     when: "extract を実行する"
-    then: "破損ファイルは `errors.jsonl` に path, phase, error, traceback を記録し、残りのファイルの抽出結果を保存する"
+    then: "破損ファイルは `errors.jsonl` に path, phase, error, traceback
+      を記録し、残りのファイルの抽出結果を保存する"
     priority: must
     verify: test
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: errors.jsonl（src/dn/workspace.py:135）の path/phase/error/traceback と、ok.md が抽出されたことを検証
+    note: errors.jsonl（src/dn/workspace.py:135）の path/phase/error/traceback と、ok.md
+      が抽出されたことを検証
     evidence: tests/test_scan_extract.py:247
 
   - id: AC-098
@@ -234,7 +264,8 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: 先頭4MB同一の >4MB ファイル2件でハッシュが異なり hash_mode full、対照の c.bin は head4m、誤った重複が無いことを検証
+    note: 先頭4MB同一の >4MB ファイル2件でハッシュが異なり hash_mode full、対照の c.bin は
+      head4m、誤った重複が無いことを検証
     evidence: tests/test_scan_extract.py:272
 
   - id: AC-027

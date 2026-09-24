@@ -262,3 +262,20 @@ def test_request_parameters(target: Path):
         assert req["temperature"] == 0, tool
         assert req["system"][-1]["cache_control"] == {"type": "ephemeral"}  # type: ignore[index]
         assert req["tool_choice"] == {"type": "tool", "name": tool}
+
+
+def test_batch_max_tokens(target: Path):
+    """AC-039: a batch classification request carries max_tokens 500 x files + 500, capped at 8000."""
+    with_taxonomy(target)
+    for i in range(3):
+        write(target, f"f{i}.md", f"# specs specification {i}\n\nbody {i}\n")
+    client = FakeClient(smart_handler())
+    ws = open_ws(target)
+    asyncio.run(Pipeline(ws, Options(llm_client=client, progress=lambda m: None)).cmd_plan())
+    (batch,) = [r for r in client.requests if tool_of(r) == "submit_classify_batch"]
+    assert batch["max_tokens"] == 500 * 3 + 500
+    assert batch["temperature"] == 0 and batch["system"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert batch["tool_choice"] == {"type": "tool", "name": "submit_classify_batch"}
+    from dn.classify import batch_max_tokens
+
+    assert batch_max_tokens(50) == 8000

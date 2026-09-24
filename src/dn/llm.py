@@ -275,6 +275,7 @@ class LLM:
         content: str | list[dict[str, Any]],
         model: str | None = None,
         shared_context: str | None = None,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         model = model or self.model
         system_blocks: list[dict[str, Any]] = [{"type": "text", "text": system}]
@@ -284,7 +285,7 @@ class LLM:
         tool = {"name": tool_name, "description": f"Return the {phase} result.", "input_schema": schema}
         req: dict[str, Any] = {
             "model": model,
-            "max_tokens": MAX_TOKENS.get(phase, 4000),
+            "max_tokens": max_tokens or MAX_TOKENS.get(phase, 4000),
             "system": system_blocks,
             "tools": [tool],
             "messages": [{"role": "user", "content": _scrub_content(content, self.root, self.root_aliases)}],
@@ -313,12 +314,15 @@ class LLM:
         shared_context: str | None = None,
         model: str | None = None,
         validate: Callable[[T], None] | None = None,
+        max_tokens: int | None = None,
     ) -> T:
         system = load_prompt(prompt)
         if self.lang in ("ja", "en"):
             system += f"\n\nOutput language: {'Japanese' if self.lang == 'ja' else 'English'}."
         schema = output.tool_schema(**(schema_overrides or {}))
-        req = self.build_request(phase, system, f"submit_{prompt}", schema, content, model, shared_context)
+        req = self.build_request(
+            phase, system, f"submit_{prompt}", schema, content, model, shared_context, max_tokens
+        )
 
         error: str | None = None
         for attempt in range(2):

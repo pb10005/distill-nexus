@@ -1,4 +1,4 @@
-# @covers AC-002, AC-003, AC-004, AC-005
+# @covers AC-002, AC-003, AC-004, AC-005, AC-109, AC-110
 """Project configuration (``.dn/config.yaml``) and ``taxonomy.yaml`` loading."""
 
 from __future__ import annotations
@@ -28,6 +28,19 @@ class KnowledgeConfig(BaseModel):
     index_token_budget: int = Field(default=20000, ge=1000)
 
 
+class Rule(BaseModel):
+    """Pre-sorting rule: a gitignore-style glob on the root-relative path -> category."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    glob: str = Field(min_length=1)
+    category: str = Field(min_length=1)
+
+
+# @assumption AS-040
+DEFAULT_RULES = [Rule(glob="*.log", category="misc")]
+
+
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -41,6 +54,16 @@ class Config(BaseModel):
     dedupe: Literal["move", "trash", "keep"] = "move"
     exclude: list[str] = Field(default_factory=list)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
+    # FEAT-009: fewer, cheaper calls
+    classify_batch_size: int = Field(default=10, ge=1, le=50)
+    classify_batch_chars: int = Field(default=24000, ge=1000)
+    rules: list[Rule] = Field(default_factory=list)  # user rules; DEFAULT_RULES always follow
+    images: bool = False  # @assumption AS-041 - vision is opt-in
+
+    @property
+    def effective_rules(self) -> list[Rule]:
+        """User rules first (first match wins), then the built-in defaults (AS-040)."""
+        return [*self.rules, *(d for d in DEFAULT_RULES if d not in self.rules)]
 
     @property
     def effective_synth_model(self) -> str:
@@ -118,6 +141,27 @@ def load_config(root: Path) -> Config:
         raise ConfigError(_format_validation(str(path), e)) from e
 
 
+def check_rules(cfg: Config, tax: Taxonomy | None) -> list[str]:
+    """Raise ConfigError for rules naming an unknown category; return warnings.
+
+    misc is always valid. Without a taxonomy, non-misc rules are ignored with a warning.
+    """
+    warnings: list[str] = []
+    bad: list[str] = []
+    for i, r in enumerate(cfg.rules):
+        if r.category == "misc":
+            continue
+        if tax is None:
+            warnings.append(f"rules[{i}] ({r.glob} -> {r.category}) ignored: no taxonomy.yaml yet")
+        elif tax.get(r.category) is None:
+            bad.append(
+                f"rules[{i}] ({r.glob}): category {r.category!r} is not in taxonomy.yaml ({', '.join(tax.slugs)}) or misc"
+            )
+    if bad:
+        raise ConfigError("invalid classification rules in .dn/config.yaml:\n  " + "\n  ".join(bad))
+    return warnings
+
+
 def load_taxonomy(root: Path) -> Taxonomy | None:
     path = root / TAXONOMY_NAME
     if not path.exists():
@@ -146,6 +190,11 @@ knowledge:
   chunk_tokens: 800
   overlap_ratio: 0.15
   index_token_budget: 20000
+classify_batch_size: 10             # files per classification call
+images: false                       # true = send images / scanned PDF pages to Claude vision
+rules:                              # decided without the LLM; first match wins
+  - glob: "contracts/**"              # example; the built-in "*.log" -> misc rule is always applied last
+    category: contracts
 """
 
 TAXONOMY_TEMPLATE = """\

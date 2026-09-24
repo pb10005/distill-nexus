@@ -81,6 +81,25 @@ class Label(LLMModel):
         }
 
 
+class BatchLabel(Label):
+    file_id: str
+
+
+class BatchLabels(LLMModel):
+    labels: list[BatchLabel]
+
+    @classmethod
+    def tool_schema(cls, **overrides: Any) -> dict[str, Any]:
+        item = Label.tool_schema(**overrides)
+        item["properties"] = {"file_id": {"type": "string"}, **item["properties"]}
+        item["required"] = ["file_id", *item["required"]]
+        return {
+            "type": "object",
+            "required": ["labels"],
+            "properties": {"labels": {"type": "array", "items": item}},
+        }
+
+
 class ProposedCategory(BaseModel):
     slug: str = Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
     name: str

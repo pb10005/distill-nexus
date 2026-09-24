@@ -87,7 +87,8 @@ acceptance:
 
   - id: AC-073
     kind: functional
-    given: "`--concurrency 1` で、モック LLM が3回目の分類呼び出しで KeyboardInterrupt を送出して中断した run"
+    given: "`--concurrency 1`・classify_batch_size 1 で、モック LLM が3回目の分類呼び出しで
+      KeyboardInterrupt を送出して中断した run"
     when: "`dn run` を再実行する"
     then: "中断前に完了した2件の LLM 呼び出しは再実行しない。残りのファイルのラベルを labels.jsonl
       に保存する（末尾に途中まで書かれた行があっても読み飛ばす）"
@@ -96,9 +97,9 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: concurrency=1で3回目classifyにKeyboardInterrupt、完了2件を確認(:91)、末尾に途中行を追記(:89)。再実行でclassify
-      3回のみ・完了2件のパスは再送なし(:99-102)、labels.jsonlから5件読める(:105)
-    evidence: tests/test_run.py:99
+    note: batch_size 1・concurrency 1 の cmd_run
+      で3回目中断→末尾に途中行を追記→再実行で分類3回・完了2件のパス非送信・5件全ラベルをアサート。テスト通過
+    evidence: tests/test_run.py:68
 
   - id: AC-074
     kind: functional

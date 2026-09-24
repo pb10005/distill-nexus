@@ -1,4 +1,4 @@
-# @covers AC-036, AC-037, AC-068, AC-070, AC-071, AC-072, AC-073, AC-075, AC-076, AC-078, AC-101, AC-102, AC-103
+# @covers AC-110, AC-111, AC-112, AC-036, AC-037, AC-068, AC-070, AC-071, AC-072, AC-073, AC-075, AC-076, AC-078, AC-101, AC-102, AC-103
 """Phase orchestration shared by the CLI subcommands (scan -> ... -> synthesize)."""
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from typing import Any
 
 from dn import classify as classify_mod
 from dn.apply import ApplyResult, actionable, apply_plan
+from dn.config import check_rules
 from dn.distill import distill, facts_path
 from dn.errors import EXIT_OK, EXIT_PARTIAL, ConfigError, CostLimitExceeded, DnError, worst
 from dn.extract import EXTRACTABLE, extract_all, kind_by_ext, read_extracted, text_path
@@ -37,7 +38,7 @@ from dn.workspace import Workspace
 @dataclass
 class Options:
     dry_llm: bool = False
-    no_images: bool = False
+    images: bool | None = None  # None = config `images` (default off, AS-041)
     follow_symlinks: bool = False
     include_hidden: bool = False
     full_hash: bool = False
@@ -115,7 +116,13 @@ class Pipeline:
             self._synth = self.llm if m == self.ws.config.model else self._make(m)
         return self._synth
 
+    @property
+    def want_images(self) -> bool:
+        return self.ws.config.images if self.opts.images is None else self.opts.images
+
     def check_llm_available(self) -> None:
+        for w in check_rules(self.ws.config, self.ws.taxonomy):
+            self.ws.warnings.append(w)
         if self.opts.llm_client is None:
             require_api_key(self.mode)
 
@@ -142,7 +149,7 @@ class Pipeline:
 
     async def extract(self, entries: list[InventoryEntry]) -> dict[str, Any]:
         self.opts.progress("extract...")
-        stats = await extract_all(self.ws, entries, self.llm, want_images=not self.opts.no_images)
+        stats = await extract_all(self.ws, entries, self.llm, want_images=self.want_images)
         return {
             "extracted": stats.extracted,
             "cached": stats.cached,
@@ -222,7 +229,7 @@ class Pipeline:
                 chars, lang = meta.chars, meta.lang
             elif kind == "image":
                 chars, lang = 0, "en"
-                if "extract" in phases and not self.opts.no_images:
+                if "extract" in phases and self.want_images:
                     tin += 1600 + 300
                     tout += int(MAX_TOKENS["vision"] * OUTPUT_ESTIMATE_RATIO)
             elif kind in EXTRACTABLE:

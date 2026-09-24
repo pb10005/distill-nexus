@@ -68,6 +68,7 @@ def test_second_run_no_changes(tmp_path: Path):
 def test_resume_after_interrupt(target: Path):
     """AC-073: after a KeyboardInterrupt on the 3rd classify call, rerun skips the 2 finished files."""
     with_taxonomy(target)
+    write(target, ".dn/config.yaml", "classify_batch_size: 1\n")
     for i in range(5):
         write(target, f"doc{i}.md", f"# Doc {i}\n\nspecs specification {i}\n")
     handler = smart_handler()
