@@ -15,22 +15,39 @@ out_of_scope:
 
 assumptions:
   - id: AS-038
-    statement: "バッチには内容ハッシュが異なるファイルをパス順に詰め、1バッチの上限は classify_batch_size 件（既定10、1〜50）かつ本文合計 classify_batch_chars 文字（既定24,000）とする。各ファイルの本文は先頭 6,000 文字まで（vision 無効の画像のように本文が空のファイルはメタデータだけを送る）。1件だけのバッチは従来の単体分類プロンプトで送る。labels.jsonl への保存は検証に通ったバッチごとにまとめて行い、再開時は labels.jsonl に記録済みかどうかで未処理を判定する（バッチの詰め方が変わっても完了分は再送しない）。バッチ呼び出しの並列数は --concurrency に従う"
+    statement: "バッチには内容ハッシュが異なるファイルをパス順に詰め、1バッチの上限は classify_batch_size
+      件（既定10、1〜50）かつ本文合計 classify_batch_chars 文字（既定24,000）とする。各ファイルの本文は先頭 6,000
+      文字まで（vision
+      無効の画像のように本文が空のファイルはメタデータだけを送る）。1件だけのバッチは従来の単体分類プロンプトで送る。labels.jsonl
+      への保存は検証に通ったバッチごとにまとめて行い、再開時は labels.jsonl
+      に記録済みかどうかで未処理を判定する（バッチの詰め方が変わっても完了分は再送しない）。バッチ呼び出しの並列数は --concurrency に従う"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-039
-    statement: "バッチ分類の max_tokens は 500 × 件数 + 500（上限 8,000）とする。応答の検証（全 file_id がちょうど1回ずつ現れ、各ラベルがスキーマと category の enum を満たすこと）に失敗したらバッチ全体を検証エラー付きで1回だけ再生成し、それでも失敗したバッチは各ファイルを単体分類でやり直す（単体分類の失敗は AC-029 と同じく errors.jsonl に記録）"
+    statement: "バッチ分類の max_tokens は 500 × 件数 + 500（上限 8,000）とする。応答の検証（全 file_id
+      がちょうど1回ずつ現れ、各ラベルがスキーマと category の enum
+      を満たすこと）に失敗したらバッチ全体を検証エラー付きで1回だけ再生成し、それでも失敗したバッチは各ファイルを単体分類でやり直す（単体分類の失敗は
+      AC-029 と同じく errors.jsonl に記録）"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-040
-    statement: "ルールは .dn/config.yaml の rules に {glob, category} の並びで書き、対象ディレクトリからの相対 POSIX パスに gitignore 構文で照合して最初に一致したものを使う。既定ルールは `*.log` → misc の1件で、ユーザーが rules を書いても置き換わらず常にユーザーのルールの後ろに適用される。category は taxonomy の slug か misc（予約語だが有効）。taxonomy が無いときは misc 以外のルールを警告して無視する。ラベルは内容ハッシュ単位なので、同じハッシュのファイルのどれか1件がルールに一致すればハッシュ全体にそのルールを適用する（複数ルールに一致したらパス順で最初のファイルの最初のルール）。ルールは毎回 LLM 呼び出しの前に評価し、保存済みラベルより優先する。ルールで決まったラベルは confidence 1.0、title はファイル名、category が misc なら has_domain_knowledge は false"
+    statement: "ルールは .dn/config.yaml の rules に {glob, category} の並びで書き、対象ディレクトリからの相対
+      POSIX パスに gitignore 構文で照合して最初に一致したものを使う。既定ルールは `*.log` → misc の1件で、ユーザーが
+      rules を書いても置き換わらず常にユーザーのルールの後ろに適用される。category は taxonomy の slug か
+      misc（予約語だが有効）。taxonomy が無いときは misc
+      以外のルールを警告して無視する。ラベルは内容ハッシュ単位なので、同じハッシュのファイルのどれか1件がルールに一致すればハッシュ全体にそのルールを適\
+      用する（複数ルールに一致したらパス順で最初のファイルの最初のルール）。ルールは毎回 LLM
+      呼び出しの前に評価し、保存済みラベルより優先する。ルールで決まったラベルは confidence 1.0、title はファイル名、category
+      が misc なら has_domain_knowledge は false"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-041
-    statement: "vision（画像ファイルの文字起こしとスキャン PDF 頁の OCR）は既定で無効とし、config の images: true または CLI の --images で有効にする。--no-images は既定と同じ動作として残す。無効時は画像の本文を空（quality: none）、PDF の低文字数頁は pymupdf が抽出できたテキストのままとする（AS-025 もこの内容に改訂）"
+    statement: "vision（画像ファイルの文字起こしとスキャン PDF 頁の OCR）は既定で無効とし、config の images: true
+      または CLI の --images で有効にする。--no-images は既定と同じ動作として残す。無効時は画像の本文を空（quality:
+      none）、PDF の低文字数頁は pymupdf が抽出できたテキストのままとする（AS-025 もこの内容に改訂）"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -40,7 +57,9 @@ open_questions: []
 acceptance:
   - id: AC-106
     kind: functional
-    given: "taxonomy があり、内容の異なる抽出可能なテキストファイル25件（各1,000文字）がある対象ディレクトリ（classify_batch_size 既定値10）"
+    given: "taxonomy
+      があり、内容の異なる抽出可能なテキストファイル25件（各1,000文字）がある対象ディレクトリ（classify_batch_size
+      既定値10）"
     when: "classify を実行する"
     then: "分類の LLM 呼び出しは3回で、25件すべてのラベルを labels.jsonl に記録する"
     priority: must
@@ -79,29 +98,34 @@ acceptance:
 
   - id: AC-109
     kind: functional
-    given: "config の rules に `docs/legal/**` → contracts があり、`docs/legal/nda.txt` と既定ルールに一致する `logs/app.log` がある"
+    given: "config の rules に `docs/legal/**` → contracts があり、`docs/legal/nda.txt`
+      と既定ルールに一致する `logs/app.log` がある"
     when: "classify を実行する"
-    then: "2件とも LLM を呼ばずにラベルを記録し、nda.txt は contracts、app.log は misc（has_domain_knowledge: false）になる"
+    then: "2件とも LLM を呼ばずにラベルを記録し、nda.txt は contracts、app.log は
+      misc（has_domain_knowledge: false）になる"
     priority: must
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: テストのconfigが *.log→misc を明示しており既定ルールの効果を検証していない。configに docs/legal/** のみを書くと rules が既定を置換し(src/dn/config.py:60)、logs/app.log は LLM(submit_classify)に送られることを手元で確認。givenの『既定ルールに一致する』を満たさない。置換が意図ならreconcileで要件側を直すこと
-    evidence: tests/test_efficiency.py:115
+    note: configはdocs/legal/**のみ、*.logは既定ルール(effective_rulesで既定を末尾マージ
+      src/dn/config.py:64)。classify呼び出し0件、nda=contracts、app.log=misc/has_domain_knowledge
+      False をアサート。テスト通過
+    evidence: tests/test_efficiency.py:113
 
   - id: AC-110
     kind: functional
-    given: "taxonomy がある状態で、taxonomy の slug にも misc にも一致しない category を指定したルール、または glob が空のルールを持つ config"
+    given: "taxonomy がある状態で、taxonomy の slug にも misc にも一致しない category を指定したルール、または
+      glob が空のルールを持つ config"
     when: "`dn plan` を実行する"
     then: "不正なルールの番号と理由を含むエラーを出力し、終了コード2を返す（misc を指定したルールはエラーにしない）"
     priority: must
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: 終了コード2とルール番号(rules[0]/rules.0.glob)はアサートしているが、thenの『理由』(未知のcategory/空glob)をstderrで検証していない。手動実行では理由は出力されているがテスト未検証
-    evidence: tests/test_efficiency.py:145
+    note: 未知category/空globの2ケースで終了コード2、ルール位置(rules[0]/rules.0.glob)と理由文言をstderrでアサート、misc指定ルールは終了コード0を確認。テスト通過
+    evidence: tests/test_efficiency.py:136
 
   - id: AC-111
     kind: functional
@@ -113,7 +137,9 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: Pipeline.cmd_plan(Options既定images=None、CLIも無指定時None を渡す src/dn/cli.py:300)で submit_vision/画像ブロック0件、PNG quality none、PDF quality text をアサート。CLI既定の配線は tests/test_scan_extract.py:323 でも確認。テスト通過
+    note: Pipeline.cmd_plan(Options既定images=None、CLIも無指定時None を渡す
+      src/dn/cli.py:300)で submit_vision/画像ブロック0件、PNG quality none、PDF quality
+      text をアサート。CLI既定の配線は tests/test_scan_extract.py:323 でも確認。テスト通過
     evidence: tests/test_efficiency.py:150
 
   - id: AC-112
@@ -126,12 +152,14 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: 実CLI dn status --json で既定の cost_usd/input_tokens が --images 付きより小さいことをアサート。テスト通過
+    note: 実CLI dn status --json で既定の cost_usd/input_tokens が --images
+      付きより小さいことをアサート。テスト通過
     evidence: tests/test_efficiency.py:170
 
   - id: AC-113
     kind: functional
-    given: "内容が同じ `docs/legal/nda.txt`（ルールで contracts に一致）と `archive/nda.txt`（どのルールにも一致しない）"
+    given: "内容が同じ `docs/legal/nda.txt`（ルールで contracts に一致）と
+      `archive/nda.txt`（どのルールにも一致しない）"
     when: "classify を実行する"
     then: "LLM を呼ばずに、そのハッシュのラベルを contracts として記録する"
     priority: must
@@ -152,12 +180,14 @@ acceptance:
     status: pass
     attempts: 0
     verified_at: 2026-09-24
-    note: cmd_run(CLI run の実体)2回目で分類呼び出し0件、nda.txt が meetings→contracts に更新、他ファイルは維持をアサート。テスト通過
+    note: cmd_run(CLI run の実体)2回目で分類呼び出し0件、nda.txt が meetings→contracts
+      に更新、他ファイルは維持をアサート。テスト通過
     evidence: tests/test_efficiency.py:195
 
   - id: AC-115
     kind: functional
-    given: "`--concurrency 1`、内容の異なるテキスト30件で、3回目のバッチ分類呼び出しが KeyboardInterrupt で中断した run"
+    given: "`--concurrency 1`、内容の異なるテキスト30件で、3回目のバッチ分類呼び出しが KeyboardInterrupt で中断した
+      run"
     when: "再実行する"
     then: "完了した2バッチの20件は再送せず、残り10件だけを分類して30件すべてのラベルを記録する"
     priority: must

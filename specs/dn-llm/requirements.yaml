@@ -213,10 +213,9 @@ acceptance:
       によるツール指定を含む"
     priority: must
     verify: test
-    status: fail
+    status: pass
     attempts: 1
     verified_at: 2026-09-24
-    note: 改訂thenのバッチ分類
-      max_tokens(500x件数+500、上限8000)を一切アサートしていない(1ファイルのみでバッチ呼び出しが発生しない)。単体1000・抽出4000・統合8000・temperature・cache_control・tool_choice
-      は検証済み
-    evidence: tests/test_llm.py:249
+    note: test_llm.py:249で単体1000・抽出4000・統合8000・temperature0・cache_control・tool_choice、:267で3件バッチのmax_tokens=2000とtemperature/cache_control/tool_choice、上限8000はbatch_max_tokens(50)で検証(同関数がリクエスト組立
+      src/dn/classify.py:280で使用)。テスト通過
+    evidence: tests/test_llm.py:267
