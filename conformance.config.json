@@ -1,0 +1,29 @@
+{
+  "specDir": "specs",
+  "srcDirs": [
+    "src",
+    "tests"
+  ],
+  "testFilePattern": "(\\.(test|spec)\\.[cm]?[jt]sx?$)|((^|/)test_[^/]+\\.py$)",
+  "ignore": [
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    ".next",
+    "coverage",
+    ".venv",
+    "__pycache__",
+    "tests/fixtures"
+  ],
+  "baseRef": "origin/master",
+  "codeExtensions": [
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "mjs",
+    "cjs",
+    "py"
+  ]
+}

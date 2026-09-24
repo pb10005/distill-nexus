@@ -1,0 +1,159 @@
+# FEAT-003 — 要件の単一の正。実装・テスト・レビューはこれに従属する。
+# 出典: 実装指示書 §2, §6 共通ルール, §9 冪等性・エラー処理・コスト制御・プライバシー, §10
+id: FEAT-003
+title: "Distill Nexus LLM 呼び出し層（構造化出力・リトライ・キャッシュ・コスト制御）"
+status: draft
+
+intent: "全フェーズのLLM呼び出しを1か所に集約し、スキーマ強制・再試行・キャッシュ・コスト上限・APIを使わないテスト経路を保証することで、再実行してもコストが増えず、結果が再現できるようにする。"
+
+out_of_scope:
+  - "Anthropic 以外のLLMプロバイダ（OpenAI, Bedrock, Vertex）への対応"
+  - "Message Batches API による非同期バッチ投入"
+  - "ストリーミング応答の逐次表示"
+  - "LLM応答の録画ファイルを自動生成するレコーダーCLI（録画は実キーを持つ人間が DN_LLM_RECORD=1 で行う）"
+
+assumptions:
+  - id: AS-009
+    statement: "並列呼び出しは anthropic SDK の AsyncAnthropic（httpx ベース）と asyncio.Semaphore で行う。SDK 内蔵のリトライは max_retries=0 で無効化し、dn 側で 429/529/5xx/接続エラーのみ最大5回、基底1秒の指数バックオフで再試行する"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-010
+    statement: "録画再生モード（DN_LLM_REPLAY=1）の録画キーはLLMキャッシュキーと同じ値とし、`tests/fixtures/llm/<key>.json` に応答JSONを置く。DN_LLM_RECORD=1 のときは実呼び出し結果を同じ場所へ保存する"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-011
+    statement: "単価（USD / 100万トークン）は sonnet 入力3・出力15、opus 入力15・出力75、haiku 入力1・出力5 を既定表として持つ。出力トークンの事前見積りはフェーズごとの max_tokens の 30% とする"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
+  - id: AS-023
+    statement: "temperature=0 と強制 tool_choice（type: tool）は、それを受け付けるモデル（claude-*-4-6 以前の4系、haiku-4-5）にのみ送る。temperature を拒否するモデル（opus-4-7 以降、sonnet-5、opus-5 系、fable 系）では temperature を省略し、強制 tool_choice を拒否するモデル（opus-5-5、fable-5-1）では tool_choice auto とツール使用を指示する system 文で代替する"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
+open_questions: []
+
+acceptance:
+  - id: AC-028
+    kind: functional
+    given: "LLM が1回目にスキーマ違反（confidence: 2）の tool_use 入力を返し、2回目に正しい入力を返す"
+    when: "構造化出力付きで LLM を呼び出す"
+    then: "2回目の呼び出しに1回目の検証エラー内容を含め、2回目の検証済み結果を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-029
+    kind: functional
+    given: "LLM が2回続けてスキーマ違反の出力を返す"
+    when: "ファイル1件の分類を実行する"
+    then: "そのファイルを `errors.jsonl` に記録し、3回目の呼び出しをしない"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-030
+    kind: functional
+    given: "API が 429 / 529 / 500 / 接続エラーを返し続ける"
+    when: "LLM を呼び出す"
+    then: "指数バックオフで再試行し、合計5回の再試行（API呼び出し6回）の後に例外を送出して失敗を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-031
+    kind: functional
+    given: "API が 400 を返す"
+    when: "LLM を呼び出す"
+    then: "再試行しない（API呼び出し回数1回で失敗を送出する）"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-032
+    kind: functional
+    given: "同じ入力内容・プロンプト・モデル名・スキーマで一度呼び出し済み"
+    when: "同じ条件で再度呼び出す / プロンプト本文だけを変えて呼び出す"
+    then: "前者は API を呼ばずキャッシュ結果を返す。後者は API を呼び出した結果を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-033
+    kind: functional
+    given: "`--dry-llm` モード"
+    when: "分類・知識抽出・統合の各スキーマで LLM を呼び出す"
+    then: "API を呼ばず、各スキーマの検証を通るダミー結果を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-034
+    kind: functional
+    given: "DN_LLM_REPLAY=1 で、録画ファイルが存在する呼び出しと存在しない呼び出し"
+    when: "LLM を呼び出す"
+    then: "前者は録画内容を返し、後者は録画キーを含むエラーを送出する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-035
+    kind: functional
+    given: "英語 10,000 文字と日本語 10,000 文字の抽出テキスト"
+    when: "入力トークンを見積もる"
+    then: "英語は 4,000 トークン、日本語は 6,667 トークン（±1）を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-036
+    kind: functional
+    given: "推定コストが `--max-cost` の値を超える入力"
+    when: "`dn plan` または `dn run` を実行する"
+    then: "LLM を1回も呼ばずに停止し、終了コード4を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-037
+    kind: functional
+    given: "LLM 呼び出しを含む実行が完了した"
+    when: "`.dn/logs/<run_id>.json` を読む"
+    then: "入力・出力・キャッシュ読込トークン数と概算コスト USD を記録している"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-038
+    kind: functional
+    given: "ホームディレクトリ配下の絶対パスにあるファイル"
+    when: "分類・知識抽出の LLM リクエストを組み立てる"
+    then: "リクエスト本文に対象ディレクトリの絶対パスと OS ユーザー名が出現しない（送信しない）"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-039
+    kind: functional
+    given: "既定モデル claude-sonnet-4-6 での任意のフェーズの LLM 呼び出し"
+    when: "API リクエストを組み立てる"
+    then: "temperature 0、フェーズ別 max_tokens（分類1000・抽出4000・統合8000）、system への cache_control ephemeral、tool_choice によるツール指定を含む"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0

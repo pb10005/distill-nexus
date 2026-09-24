@@ -1,0 +1,20 @@
+{
+  "name": "distill-nexus-conformance",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "spec": "tsx scripts/spec-init.ts",
+    "lint:spec": "tsx scripts/spec-lint.ts",
+    "trace": "tsx scripts/trace-matrix.ts",
+    "verdict": "tsx scripts/record-verdict.ts",
+    "gate": "tsx scripts/gate.ts"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

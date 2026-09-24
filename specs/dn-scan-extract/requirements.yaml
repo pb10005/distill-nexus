@@ -1,0 +1,179 @@
+# FEAT-002 — 要件の単一の正。実装・テスト・レビューはこれに従属する。
+# 出典: 実装指示書 §3, §5.1, §5.2, §8
+id: FEAT-002
+title: "Distill Nexus scan / extract フェーズ"
+status: draft
+
+intent: "対象ディレクトリの雑多なファイルを安全に列挙・ハッシュ化し、形式ごとの抽出器で正規化Markdownへ変換して、後続の分類と知識抽出が同じテキストを共有できるようにする。"
+
+out_of_scope:
+  - "動画・音声・実行バイナリからのテキスト抽出（scan で列挙し misc 扱いにするのみ）"
+  - "`.doc` `.xls` `.ppt` 旧バイナリOffice形式と `.odt` 系の抽出"
+  - "パスワード保護されたPDF・Officeファイルの復号"
+  - "tree-sitter による構文解析。コードは正規表現で関数・クラス名を拾う範囲に留める"
+  - "ファイル内容のウイルス・マルウェア検査"
+
+assumptions:
+  - id: AS-005
+    statement: "`.dnignore` の解釈には `pathspec` ライブラリ（純Python）を使う。§2 の依存表に無いが §5.1 で名指しされているため追加する"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-006
+    statement: "HTML の本文抽出には `beautifulsoup4` を使い、trafilatura は採用しない（依存を軽く保つ）。script/style/nav/footer 要素を除去し、見出しは Markdown 見出しへ変換する"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-007
+    statement: "言語判定（lang）は抽出テキスト中のひらがな・カタカナ・漢字の比率が 20% 以上なら ja、それ未満で英字があれば en、判定不能なら und とする。外部の言語判定ライブラリは使わない"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-008
+    statement: "puremagic が拡張子と異なる種別を返した場合、magic 側がテキスト系以外（画像・PDF・Office zip）のときのみ magic を優先する。テキスト系拡張子で magic 判定が取れない場合は拡張子に従う（プレーンテキストは magic を持たないため）"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
+open_questions: []
+
+acceptance:
+  - id: AC-014
+    kind: functional
+    given: "`.git/` `node_modules/` `__pycache__/` `.DS_Store` `Thumbs.db` `desktop.ini` `~$tmp.docx` と隠しファイル、`.dnignore` に一致するファイル、通常ファイル3件を含むディレクトリ"
+    when: "`dn scan` を実行する"
+    then: "`.dn/cache/inventory.jsonl` に通常ファイル3件だけを記録する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-015
+    kind: functional
+    given: "対象外ディレクトリを指すシンボリックリンクを含むディレクトリ"
+    when: "`--follow-symlinks` を付けずに `dn scan` を実行する"
+    then: "リンク先のファイルを inventory に記録しない"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-016
+    kind: functional
+    given: "内容が同一でファイル名が異なる2ファイル"
+    when: "`dn scan --json` を実行する"
+    then: "両者に同じ blake2b ハッシュを記録し、重複候補として出力する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-017
+    kind: functional
+    given: "前回の scan 以降に mtime とサイズが変わっていないファイル"
+    when: "`dn scan` を再実行する"
+    then: "そのファイルのハッシュを再計算せず、前回の inventory の値を再利用する（hash_computed=0 を出力する）"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-018
+    kind: functional
+    given: "max_file_mb を超えるサイズのファイル"
+    when: "`dn scan` を実行する"
+    then: "inventory に skipped: too_large として記録し、ハッシュ計算と抽出の対象にしない"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-019
+    kind: functional
+    given: "CP932 でエンコードされ CRLF 改行の日本語テキストファイル"
+    when: "extract を実行する"
+    then: "`text/<hash>.md` を UTF-8（BOMなし）・LF改行で保存し、元の日本語文字列を含む"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-020
+    kind: functional
+    given: "抽出対象の任意の形式のファイル"
+    when: "extract を実行する"
+    then: "出力Markdownの先頭に source, type, pages, chars, lang, quality を持つ YAML frontmatter を出力する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-021
+    kind: functional
+    given: "表を含む docx、250行のシートを含む xlsx、ノート付き pptx"
+    when: "extract を実行する"
+    then: "docx の表と xlsx の先頭200行を GFM 表で出力し、xlsx の残り行数と pptx のスライド番号・ノート本文を出力に含む"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-022
+    kind: functional
+    given: "テキスト層のある頁と、文字数50未満の頁が混在する PDF"
+    when: "extract を実行する"
+    then: "文字数50未満の頁だけを画像化して LLM の OCR に渡し、quality: mixed を記録する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-023
+    kind: functional
+    given: "HTML ファイルと、300行・docstring付きの Python ソースファイル"
+    when: "extract を実行する"
+    then: "HTML は script/style を除いた本文を出力し、コードは先頭200行・docstring・関数とクラス名一覧を出力する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-024
+    kind: functional
+    given: "PNG 画像ファイル"
+    when: "`--no-images` を付けずに extract を実行する / `--no-images` を付けて実行する"
+    then: "前者は LLM に画像を送信し、応答の文字起こしを本文として保存する。後者は LLM に画像を送信しない"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-025
+    kind: functional
+    given: "抽出結果が 200,000 文字を超えるテキストファイル"
+    when: "extract を実行する"
+    then: "先頭・中央・末尾から各 60,000 文字を採った本文を保存し、frontmatter に truncated: true を記録する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-026
+    kind: functional
+    given: "破損した docx（zip として不正なバイト列）を含む複数ファイル"
+    when: "extract を実行する"
+    then: "破損ファイルは `errors.jsonl` に path, phase, error, traceback を記録し、残りのファイルの抽出結果を保存する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-027
+    kind: functional
+    given: "拡張子が `.txt` だが中身が PNG のファイル"
+    when: "extract を実行する"
+    then: "画像として扱い、種別不一致の警告をログに出力する"
+    priority: should
+    verify: test
+    status: pending
+    attempts: 0

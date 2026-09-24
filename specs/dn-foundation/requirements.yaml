@@ -1,0 +1,168 @@
+# FEAT-001 — 要件の単一の正。実装・テスト・レビューはこれに従属する。
+# 出典: 「ファイル整理・ドメイン知識抽出ツール 実装指示書」(2026-09-24) §1, §2, §7, §8, §9
+id: FEAT-001
+title: "Distill Nexus 基盤: パッケージ雛形・設定・スキーマ・OS差分吸収"
+status: draft
+
+intent: "Distill Nexus (dn) の全フェーズが共通に依存する土台（CLIエントリ、設定とtaxonomyの検証、LLM出力を含むpydanticスキーマ、Windows/Linux/macOSのファイル名・パス差分の吸収、危険な対象ディレクトリの拒否）を、3OSで同一コードとして提供する。"
+
+out_of_scope:
+  - "GUI・Web UIの提供"
+  - "クラウドストレージ（Google Drive, S3, OneDrive）との直接連携"
+  - "グローバル設定ファイル（platformdirs の user_config_dir）の読み込み。v1はプロジェクト内 .dn/config.yaml のみ読む"
+  - "設定ファイルのマイグレーション機構（旧バージョン設定の自動変換）"
+
+assumptions:
+  - id: AS-001
+    statement: "CLI名・作業ディレクトリ名は指示書 §1/§2 の `dn` 系に統一する。コマンドは `dn`、作業領域は `.dn/`、除外ファイルは `.dnignore`、録画再生の環境変数は `DN_LLM_REPLAY`、スキルは `.claude/skills/dn/`、プロンプト格納先は `src/dn/prompts/`。指示書の後半に残る `korg` / `.korg/` / `KORG_LLM_REPLAY` は改名前の表記として扱い、実装しない"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-002
+    statement: "配布パッケージ名は `distill-nexus`、importパッケージ名は `dn`、src レイアウト（`src/dn/`）とする。`uv tool install .` で `dn` コマンドが入る"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-003
+    statement: "モデル既定値は指示書どおり model=`claude-sonnet-4-6`、synth_model 未指定時は model と同じ値を使う。`.dn/config.yaml` の雛形には synth_model: `claude-opus-4-1` を記載する。単価表はモデル名の接頭辞で引き、未知モデルは sonnet 単価で見積もる"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-004
+    statement: "Windows のパス長上限は 260 文字、POSIX のファイル名長上限は 255 バイトとして扱う。`long_path()` は Windows でのみ `\\\\?\\` を付与し、他OSでは入力をそのまま返す。切り詰め後の上限はファイル名 200 文字"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
+open_questions: []
+
+acceptance:
+  - id: AC-001
+    kind: functional
+    given: "distill-nexus パッケージがインストールされた環境"
+    when: "`dn --version` を実行する"
+    then: "パッケージのバージョン文字列を標準出力に出力し、終了コード0を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-002
+    kind: functional
+    given: "`.dn/config.yaml` と `taxonomy.yaml` が存在しない対象ディレクトリ"
+    when: "`dn init <dir>` を実行する"
+    then: "`.dn/config.yaml` と `taxonomy.yaml` の雛形ファイルを生成する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-003
+    kind: functional
+    given: "既に内容のある `.dn/config.yaml` と `taxonomy.yaml` が存在する対象ディレクトリ"
+    when: "`dn init <dir>` を再実行する"
+    then: "既存ファイルの内容は変わらない"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-004
+    kind: functional
+    given: "`.dn/config.yaml` に不正な値（concurrency: 0、confidence_threshold: 1.5、未知の dedupe 値のいずれか）が書かれた対象ディレクトリ"
+    when: "任意のサブコマンドを実行する"
+    then: "不正なキー名を含むエラーメッセージを出力し、終了コード2を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-005
+    kind: functional
+    given: "slug が空、または重複した slug を持つ `taxonomy.yaml`"
+    when: "taxonomy を読み込む"
+    then: "検証エラーとして拒否し、終了コード2を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-006
+    kind: functional
+    given: "Windows 予約名（CON, PRN, AUX, NUL, COM1-9, LPT1-9。大文字小文字・拡張子の有無を問わない）、または末尾がドット・空白の名前"
+    when: "`safe_name()` に渡す"
+    then: "予約名には `_` を付与した名前を返し、末尾のドット・空白を除去した名前を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-007
+    kind: functional
+    given: "`<>:\"/\\|?*` または制御文字（U+0000-U+001F）を含む名前"
+    when: "`safe_name()` に渡す"
+    then: "これらの文字をすべて除去した名前を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-008
+    kind: functional
+    given: "親ディレクトリと結合すると OS のパス長上限を超えるファイル名"
+    when: "`fit_path()` でパスを組み立てる"
+    then: "拡張子を保持したままファイル名を切り詰め、上限以下のパスを返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-009
+    kind: functional
+    given: "NFD で表記された名前と NFC で表記された同一文字列、または大文字小文字だけが異なる2つの名前"
+    when: "`normalize()` と `same_name()` で比較する"
+    then: "`normalize()` は NFC 文字列を返し、`same_name()` はどちらの組でも True を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-010
+    kind: functional
+    given: "confidence が 1.5、date が `2024/03/12`、必須キー summary が欠損、の何れかを含む LLM 分類出力"
+    when: "`Label` スキーマで検証する"
+    then: "pydantic の ValidationError を送出し、不正フィールド名をエラーに含む"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-011
+    kind: functional
+    given: "環境変数 ANTHROPIC_API_KEY が未設定で、`--dry-llm` も `DN_LLM_REPLAY=1` も指定されていない"
+    when: "LLM を使うサブコマンド（plan / distill / run）を実行する"
+    then: "ANTHROPIC_API_KEY が無い旨のエラーを出力し、終了コード2を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-012
+    kind: functional
+    given: "対象ディレクトリがファイルシステムのルート、またはホームディレクトリそのもの"
+    when: "`--i-know-what-i-am-doing` を付けずに scan / plan / apply / run を実行する"
+    then: "実行を拒否し、終了コード2を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-013
+    kind: functional
+    given: "隠し属性のファイル（POSIX は先頭ドット、Windows は FILE_ATTRIBUTE_HIDDEN）"
+    when: "`is_hidden()` に渡す"
+    then: "True を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0

@@ -1,0 +1,188 @@
+# FEAT-004 — 要件の単一の正。実装・テスト・レビューはこれに従属する。
+# 出典: 実装指示書 §4 整理後ディレクトリ・manifest, §5.3, §5.4, §5.5, §6.1, §6.2, §9 破壊的操作・ロールバック
+id: FEAT-004
+title: "Distill Nexus 整理系フェーズ（classify / plan / apply / undo）"
+status: draft
+
+intent: "抽出済みテキストを LLM で分類し、ドライランの移動計画を人間が確認してから移動・コピーを実行でき、いつでも manifest から完全に元へ戻せるようにする。"
+
+out_of_scope:
+  - "元ファイルの内容の書き換え・完全削除（重複は _duplicates/ かOSのゴミ箱へ送るのみ）"
+  - "複数の run を横断した undo の選択的マージ（undo は run 単位）"
+  - "分類結果を学習してプロンプトを自動改善する機能"
+  - "ネットワークドライブ・クラウド同期フォルダ固有のロック制御"
+
+assumptions:
+  - id: AS-012
+    statement: "`--propose-taxonomy` は既存の `taxonomy.yaml` を上書きせず、`.dn/taxonomy.proposed.yaml` に書き出す。ユーザーが内容を確認して `taxonomy.yaml` へ移す。taxonomy.yaml が無い状態で plan を実行した場合は提案を生成して停止し、終了コード0を返す"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-013
+    statement: "年フォルダは classify の date（文書内の日付）から取った年を使い、date が null ならファイル mtime は使わず年フォルダを作らない"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-014
+    statement: "`--interactive` の確認は低信頼度（confidence < 閾値）のファイルに対してのみ行い、Enter で misc 維持、カテゴリ slug 入力でそのカテゴリへ変更する。`--json` と同時指定された場合は確認を行わない"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-015
+    statement: "undo は manifest の to→from を逆順に戻した後、apply で作成された空ディレクトリ（organized/ 配下）を削除する。manifest.json 自体は `undone_at` を付けて残す"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
+open_questions: []
+
+acceptance:
+  - id: AC-040
+    kind: functional
+    given: "taxonomy に contracts / specs を持ち、LLM が confidence 0.9 で contracts、confidence 0.4 で specs を返す2ファイル"
+    when: "classify を実行する"
+    then: "1件目を contracts、2件目を misc として `labels.jsonl` に記録する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-041
+    kind: functional
+    given: "taxonomy のカテゴリ slug 一覧"
+    when: "分類用の tool スキーマを組み立てる"
+    then: "category の enum が taxonomy の slug 全件と misc だけに一致する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-042
+    kind: functional
+    given: "同一ハッシュのファイル3件"
+    when: "classify を実行する"
+    then: "LLM 呼び出しは1回だけで、3件すべてに同じラベルを記録する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-043
+    kind: functional
+    given: "taxonomy.yaml が無い対象ディレクトリ"
+    when: "`dn plan --propose-taxonomy` を実行する"
+    then: "slug, name, description, examples を持つ 5〜15 個のカテゴリ案を `.dn/taxonomy.proposed.yaml` に保存し、plan.json を生成しない"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-044
+    kind: functional
+    given: "category=contracts, subcategory=nda, date=2024-03-12 のラベル"
+    when: "plan を生成する"
+    then: "移動先を `organized/contracts/nda/2024/<元のファイル名>` とし、organized/ 以下の階層数は3以下になる"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-045
+    kind: functional
+    given: "同一ハッシュのファイル2件"
+    when: "`--dedupe move` / `--dedupe trash` / `--dedupe keep` で plan を生成する"
+    then: "先に見つかった1件を正とし、2件目の op をそれぞれ `_duplicates/` への move、trash、移動しない（skip）として出力する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-046
+    kind: functional
+    given: "同じ移動先フォルダに `Report.pdf` と `report.pdf` が入る計画"
+    when: "plan を生成する"
+    then: "2件目の移動先を `report-2.pdf` として plan.json に出力する（casefold で衝突を判定する）"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-047
+    kind: functional
+    given: "title=`Vendor A NDA`, date=2024-03-12 のラベルと、date=null のラベル"
+    when: "`--rename` を付けて plan を生成する"
+    then: "移動先ファイル名として前者は `vendor-a-nda_2024-03-12.pdf`、後者は日付なしの `<slug>.<ext>` を plan.json に出力する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-048
+    kind: functional
+    given: "分類済みの対象ディレクトリ"
+    when: "`dn plan --json` を実行する"
+    then: "元ファイルを1件も移動せず、from / to / category / confidence / op を持つ計画を JSON で標準出力に出力する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-049
+    kind: functional
+    given: "plan.json 生成後に移動元ファイルの1件が削除された状態"
+    when: "`dn apply --yes` を実行する"
+    then: "事前検証で失敗し、どのファイルも移動せず、終了コード1を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-050
+    kind: functional
+    given: "有効な plan.json"
+    when: "`dn apply --yes` を実行する"
+    then: "全件を移動し、移動1件ごとに from, to, hash, op を manifest.json に追記し、移動後ファイルの mtime は移動前と一致する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-051
+    kind: functional
+    given: "`--copy` で生成した plan"
+    when: "`dn apply --yes` を実行する"
+    then: "元ファイルを元の場所に残し、移動先にコピーを作成する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-052
+    kind: functional
+    given: "`dn apply` で移動を実行した直後のツリー"
+    when: "`dn undo` を実行し、さらにもう一度 `dn undo` を実行する"
+    then: "1回目で全ファイルのパス・ハッシュ・mtime が apply 前と一致し、manifest に undone_at を記録する。2回目は何も移動しない"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-053
+    kind: functional
+    given: "apply 後に移動先ファイル1件の内容が改変された、または from の位置に別ファイルが置かれた"
+    when: "`dn undo` を実行する"
+    then: "該当ファイルだけをスキップして警告を出力し、残りのファイルは元の位置へ戻す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-054
+    kind: functional
+    given: "`.dn/lock` が既に存在する、または移動先が対象ディレクトリの親をまたぐ（`..` を含む）計画"
+    when: "`dn apply --yes` を実行する"
+    then: "移動を拒否し、終了コード1を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0

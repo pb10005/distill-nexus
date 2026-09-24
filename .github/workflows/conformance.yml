@@ -1,0 +1,100 @@
+# @covers AC-002, AC-005, AC-007, AC-009, AC-014, AC-015
+name: conformance
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 逆方向トレースに差分が必要
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # 要件そのものの健全性（曖昧語・観測不能なthen・異常系の不在）
+      - name: spec lint
+        run: npx tsx scripts/spec-lint.ts
+
+      # 順方向・逆方向・仮定のトレース。PR では --strict で
+      # 「どのACにも紐づかない変更」をエラー扱いにする。
+      - name: traceability
+        run: npx tsx scripts/trace-matrix.ts --base origin/${{ github.base_ref || 'master' }} --strict
+
+      - name: tests
+        run: npm test
+
+      - name: types
+        run: npx tsc --noEmit
+
+      # 失敗時にトレース結果を残す（どのACで落ちたかを人間が即座に見るため）
+      - name: report
+        if: always()
+        run: npx tsx scripts/trace-matrix.ts --json > trace.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trace-matrix
+          path: trace.json
+
+  # 配布用サンプル(examples/with-samples/)は意図的に違反を含む。gateとは分離し、
+  # install.mjs の回帰と検出ロジックの健全性を確認するだけの非必須ジョブとして扱う。
+  # branch protection の required status checks には含めない（AS-003）。
+  samples-selfcheck:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: sample spec lint (violations expected)
+        run: npx tsx scripts/spec-lint.ts examples/with-samples/specs
+
+      # trace-matrix.ts を生で呼ぶと「意図的な違反を検出できている」正常時でも
+      # exit 1 になり、CIが毎回赤く見えて何が壊れているのか判別できない。
+      # AC-006 のアサーション(期待した違反が全部出ていること)を通すことで、
+      # green=検出ロジック健全 / red=検出漏れ(退行) という正しい意味に直す。
+      - name: "sample traceability (AC-006: 意図的な違反が引き続き検出されることを確認)"
+        run: node --experimental-strip-types --test --test-concurrency=1 --test-name-pattern="AC-006" tests/kit-self-ci.test.ts
+
+  # gate.ts/install.mjs がbashに依存せずWindowsのネイティブpowershell/cmd.exeでも動くことの証明(AC-014)。
+  # 非必須ジョブとして扱い、branch protectionのrequired status checksには含めない(AC-015/AS-007)。
+  windows-selfcheck:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: gate (Node直接実行、bash不使用)
+        run: npm run gate
+
+      - name: install.mjs smoke test
+        run: |
+          mkdir "${{ runner.temp }}/win-install-check"
+          node install.mjs "${{ runner.temp }}/win-install-check" --with-samples

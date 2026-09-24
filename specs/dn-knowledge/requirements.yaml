@@ -1,0 +1,188 @@
+# FEAT-005 — 要件の単一の正。実装・テスト・レビューはこれに従属する。
+# 出典: 実装指示書 §4 知識ベース・AI入力性の要件, §5.6, §5.7, §6.3, §6.4, §7 export
+id: FEAT-005
+title: "Distill Nexus 知識系フェーズ（distill / synthesize / export）"
+status: draft
+
+intent: "抽出テキストから根拠付きの用語・エンティティ・事実を取り出して統合し、LLMのコンテキストやRAGにそのまま投入できる `_knowledge/` を毎回一貫した形で再生成する。"
+
+out_of_scope:
+  - "ベクトル埋め込みの計算・ベクトルDBへの投入（chunks.jsonl の出力までを担う）"
+  - "_knowledge/ の差分マージ（毎回再生成する。`<!-- manual -->` セクションの保持のみ行う）"
+  - "知識グラフの可視化・GUI表示"
+  - "外部知識（Web検索・既存辞書）による用語定義の補完"
+
+assumptions:
+  - id: AS-016
+    statement: "トークン数はすべて文字数からの近似（英語 ÷2.5、日本語 ÷1.5、lang=ja のとき日本語係数）で数え、トークナイザは使わない。chunks.jsonl の tokens もこの近似値"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-017
+    statement: "正規化の候補ペアは difflib.SequenceMatcher の類似度 0.8 以上、または空白区切りトークンを1つ以上共有する名前の組とし、LLM が same=true と判定したものを canonical 名へ統合する"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-018
+    statement: "`<!-- manual -->` セクションは、`<!-- manual -->` から `<!-- /manual -->` までのブロックとし、再生成時は同じ slug の topics/<slug>.md の末尾に元のまま付け戻す"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-019
+    statement: "facts・terms の source は `整理後パス`（apply 済みなら manifest の to、未 apply なら元の相対パス）に `#<locator>` を付けた文字列とする"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
+open_questions: []
+
+acceptance:
+  - id: AC-055
+    kind: functional
+    given: "見出しを持つ 20,000 文字の抽出テキスト"
+    when: "distill を実行する"
+    then: "見出し単位で最大 8,000 文字のチャンクに分けて LLM に渡し、結果を `facts/<hash>.json` に保存する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-056
+    kind: functional
+    given: "LLM が terms / entities / facts / relations を返したチャンク"
+    when: "`facts/<hash>.json` を読む"
+    then: "各要素が path, hash, locator を持つ source を含む"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-057
+    kind: functional
+    given: "category=misc かつ has_domain_knowledge=false のファイル"
+    when: "`--distill-all` なしで distill を実行する / `--distill-all` 付きで実行する"
+    then: "前者はそのファイルの LLM 呼び出しをしない。後者は LLM を呼び出して facts を保存する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-058
+    kind: functional
+    given: "facts/*.json が存在する状態"
+    when: "synthesize を実行する"
+    then: "`_knowledge/` に INDEX.md, overview.md, glossary.md, entities.json, facts.jsonl, relations.json, chunks.jsonl, sources.md, open-questions.md, topics/*.md を生成する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-059
+    kind: functional
+    given: "表記ゆれの用語ペア（`API Gateway` と `API gateway`）を LLM が same=true と判定する"
+    when: "synthesize の正規化を実行する"
+    then: "glossary.md と entities.json では canonical 名1件に統合し、もう一方を aliases に含む"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-060
+    kind: functional
+    given: "LLM のトピック分割結果にどのトピックにも属さないエンティティがある"
+    when: "synthesize を実行する"
+    then: "そのエンティティを `topics/general.md` に含む"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-061
+    kind: functional
+    given: "トピック文書生成で LLM が入力に存在しない `[src: F-999]` を出力する"
+    when: "synthesize を実行する"
+    then: "そのトピック文書を検証エラーとして `errors.jsonl` に記録する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-062
+    kind: functional
+    given: "生成された topics/<slug>.md"
+    when: "frontmatter を読む"
+    then: "title, aliases, sources, confidence, updated を含む"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-063
+    kind: functional
+    given: "約 3,000 トークン相当の見出し付き抽出テキスト"
+    when: "chunks.jsonl を生成する"
+    then: "各チャンクは id, source_hash, source_path, heading_path, text, tokens を持ち、tokens は 800 以下、隣接チャンクの重なりは 800 の 15%（120トークン）±20 トークン以内"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-064
+    kind: functional
+    given: "同一 subject と predicate で object が異なる2件の fact"
+    when: "synthesize を実行する"
+    then: "open-questions.md に両方の statement と source を出力する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-065
+    kind: functional
+    given: "INDEX.md に存在しないファイルへのリンクがある、または INDEX+overview+glossary が index_token_budget を超える"
+    when: "synthesize の検証を実行する"
+    then: "失敗内容を出力し、終了コード1を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-066
+    kind: functional
+    given: "正常に生成された _knowledge/"
+    when: "検証を実行する"
+    then: "facts.jsonl の全 source のパス部分が sources.md の表に含まれ、見出しは `###` 以下、GFM 表以外の HTML タグを含まない"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-067
+    kind: functional
+    given: "topics/<slug>.md に `<!-- manual -->` セクションを人が追記した状態"
+    when: "synthesize を再実行する"
+    then: "再生成された同じ slug の文書にそのセクションが元の文字列のまま残る"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-068
+    kind: functional
+    given: "生成済みの _knowledge/"
+    when: "`dn export --format md` / `--format jsonl` / `--format zip` を実行する"
+    then: "それぞれ全ファイルを連結した単一の .md、1行1ファイルの .jsonl、_knowledge/ 全体の .zip を生成する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-069
+    kind: functional
+    given: "英語と日本語が混在する用語"
+    when: "glossary.md を生成する"
+    then: "アルファベット順の後に五十音順で並んだ GFM 表（用語・定義・別名・初出ソース）を出力する"
+    priority: should
+    verify: test
+    status: pending
+    attempts: 0
