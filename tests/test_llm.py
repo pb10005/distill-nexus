@@ -226,7 +226,12 @@ def test_privacy_scrub(tmp_path: Path):
     """AC-038: request bodies never contain the target's absolute path or the OS user name."""
     home_like = tmp_path / "Users" / "someone" / "docs"
     user = getpass.getuser()
-    write(home_like, "notes.md", f"# Notes\n\nSaved at {home_like}/notes.md by {user}.\n")
+    home_like.mkdir(parents=True)
+    write(
+        home_like,
+        "notes.md",
+        f"# Notes\n\nSaved at {home_like}/notes.md ({home_like.resolve()}) by {user}.\n",
+    )
     with_taxonomy(home_like)
     ws = open_ws(home_like)
     client = FakeClient(smart_handler())
@@ -237,6 +242,7 @@ def test_privacy_scrub(tmp_path: Path):
     for req in client.requests:
         body = json.dumps(req, ensure_ascii=False)
         assert str(home_like) not in body and home_like.as_posix() not in body
+        assert str(home_like.resolve()) not in body and home_like.resolve().as_posix() not in body
         assert not re.search(rf"(?<![\w]){re.escape(user)}(?![\w])", body), user
 
 

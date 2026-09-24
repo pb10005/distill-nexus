@@ -138,8 +138,9 @@ def pid_alive(pid: int) -> bool:
         return False
     if current_os() == "windows":  # pragma: no cover - exercised on the Windows CI job
         import ctypes
+        from typing import Any, cast
 
-        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        kernel32 = cast(Any, ctypes).windll.kernel32  # windll exists only on Windows
         handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
         if not handle:
             return False

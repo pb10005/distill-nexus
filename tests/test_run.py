@@ -259,7 +259,7 @@ def test_run_log_file(tmp_path: Path):
         out = json.loads(p.stdout)
         log = root / ".dn" / "logs" / f"{out['run_id']}.log"
         assert log.is_file(), args
-        assert Path(out["log"]) == log
+        assert Path(out["log"]).resolve() == log.resolve()
 
 
 def test_export_formats(tmp_path: Path):

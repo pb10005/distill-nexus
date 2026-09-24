@@ -97,6 +97,7 @@ class Pipeline:
             concurrency=self.ws.config.concurrency,
             fixtures_dir=fixtures,
             root=self.ws.root,
+            root_aliases=self.ws.root_aliases,
             client=self.opts.llm_client,
             lang=self.ws.config.lang,
         )

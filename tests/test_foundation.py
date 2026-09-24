@@ -159,7 +159,11 @@ def test_missing_api_key_exit_2(target: Path, cmd: str):
     import sys
 
     p = subprocess.run(
-        [sys.executable, "-m", "dn.cli", cmd, str(target)], env=env, capture_output=True, text=True
+        [sys.executable, "-m", "dn.cli", cmd, str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
     )
     assert p.returncode == 2
     assert "ANTHROPIC_API_KEY" in p.stderr

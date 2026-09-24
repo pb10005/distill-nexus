@@ -79,6 +79,7 @@ class Workspace:
     run_id: str = field(default_factory=new_run_id)
     error_count: int = 0
     warnings: list[str] = field(default_factory=list)
+    root_aliases: tuple[str, ...] = ()  # the target as given, before resolve()
     _log_handler: logging.Handler | None = None
 
     @classmethod
@@ -86,6 +87,7 @@ class Workspace:
         root = Path(root).expanduser()
         if not root.is_dir():
             raise ConfigError(f"not a directory: {root}")
+        given = str(root.absolute())
         root = root.resolve()
         if is_dangerous_root(root) and not allow_dangerous:
             raise ConfigError(
@@ -95,7 +97,8 @@ class Workspace:
         cfg = load_config(root)
         tax = load_taxonomy(root)
         out_dir = (Path(out).expanduser() if out else root / "organized").resolve()
-        return cls(root=root, config=cfg, taxonomy=tax, out=out_dir)
+        aliases = (given,) if given != str(root) else ()
+        return cls(root=root, config=cfg, taxonomy=tax, out=out_dir, root_aliases=aliases)
 
     # ---- layout
     @property

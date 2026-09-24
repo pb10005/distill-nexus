@@ -85,6 +85,7 @@ def run_dn(
         env=e,
         input=input,
         text=True,
+        encoding="utf-8",
         capture_output=True,
         timeout=300,
     )

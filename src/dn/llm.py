@@ -118,10 +118,16 @@ def supports_forced_tool(model: str) -> bool:
 # ------------------------------------------------------------------ privacy
 
 
-def scrub(text: str, root: Path | None) -> str:
-    """Remove the absolute target path, the home path and the OS user name (§9 privacy)."""
-    if root is not None:
-        for variant in {str(root), root.as_posix()}:
+def scrub(text: str, root: Path | None, aliases: tuple[str, ...] = ()) -> str:
+    """Remove the absolute target path, the home path and the OS user name (§9 privacy).
+
+    ``aliases`` are other spellings of the target (the path as given before symlink /
+    8.3 short-name resolution, e.g. /var vs /private/var on macOS)."""
+    variants: set[str] = set()
+    for r in [*([root] if root is not None else []), *(Path(a) for a in aliases)]:
+        variants |= {str(r), r.as_posix()}
+    for variant in sorted(variants, key=len, reverse=True):
+        if len(variant) > 1:
             text = text.replace(variant, "<target>")
     home = str(Path.home())
     if len(home) > 1:
@@ -135,15 +141,15 @@ def scrub(text: str, root: Path | None) -> str:
     return text
 
 
-def _scrub_content(content: Any, root: Path | None) -> Any:
+def _scrub_content(content: Any, root: Path | None, aliases: tuple[str, ...] = ()) -> Any:
     if isinstance(content, str):
-        return scrub(content, root)
+        return scrub(content, root, aliases)
     if isinstance(content, list):
-        return [_scrub_content(c, root) for c in content]
+        return [_scrub_content(c, root, aliases) for c in content]
     if isinstance(content, dict):
         if content.get("type") == "image":
             return content
-        return {k: _scrub_content(v, root) for k, v in content.items()}
+        return {k: _scrub_content(v, root, aliases) for k, v in content.items()}
     return content
 
 
@@ -221,6 +227,7 @@ class LLM:
         concurrency: int = 6,
         fixtures_dir: Path | None = None,
         root: Path | None = None,
+        root_aliases: tuple[str, ...] = (),
         client: Any = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         lang: str = "auto",
@@ -230,6 +237,7 @@ class LLM:
         self.mode: Mode = mode
         self.fixtures_dir = fixtures_dir or DEFAULT_FIXTURES
         self.root = root
+        self.root_aliases = root_aliases
         self.usage = Usage()
         self.lang = lang
         self._client = client
@@ -279,7 +287,7 @@ class LLM:
             "max_tokens": MAX_TOKENS.get(phase, 4000),
             "system": system_blocks,
             "tools": [tool],
-            "messages": [{"role": "user", "content": _scrub_content(content, self.root)}],
+            "messages": [{"role": "user", "content": _scrub_content(content, self.root, self.root_aliases)}],
         }
         if supports_temperature(model):
             req["temperature"] = 0
