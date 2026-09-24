@@ -190,11 +190,8 @@ acceptance:
     kind: functional
     given: "既定モデル claude-sonnet-4-6 での任意のフェーズの LLM 呼び出し"
     when: "API リクエストを組み立てる"
-    then: "temperature 0、フェーズ別 max_tokens（分類1000・抽出4000・統合8000）、system への cache_control ephemeral、tool_choice によるツール指定を含む"
+    then: "temperature 0、フェーズ別 max_tokens（単体分類1000・バッチ分類は 500×件数+500 で上限8000・抽出4000・統合8000）、system への cache_control ephemeral、tool_choice によるツール指定を含む"
     priority: must
     verify: test
-    status: pass
+    status: pending
     attempts: 0
-    verified_at: 2026-09-24
-    note: classify/distill/topic_doc の max_tokens 1000/4000/8000、全ツールで model=sonnet-4-6, temperature 0, system末尾 cache_control ephemeral, tool_choice type tool を検証
-    evidence: tests/test_llm.py:240

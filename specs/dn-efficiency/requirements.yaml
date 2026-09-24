@@ -1,0 +1,159 @@
+# FEAT-009 — 要件の単一の正。実装・テスト・レビューはこれに従属する。
+# 出典: 2026-09-24 の人間の指示「スキャン・抽出に時間とトークンを使いすぎている」への対策案のうち
+#       (2) 分類のバッチ化とルールによる事前振り分け、(5) 画像 vision の既定オフ を採用。
+id: FEAT-009
+title: "Distill Nexus 呼び出し削減（ルール振り分け・分類バッチ化・vision 既定オフ）"
+status: frozen
+
+intent: "同じ整理結果を保ったまま LLM 呼び出し回数と送信トークンを減らし、整理を速く安くする。"
+
+out_of_scope:
+  - "Message Batches API による非同期投入（FEAT-003 の out_of_scope のまま）"
+  - "distill / synthesize の呼び出し削減（今回は classify と extract のみ）"
+  - "本文を送らずファイル名だけから LLM でカテゴリを推定するモード"
+  - "ルールの自動学習（過去の分類結果からルールを生成する機能）"
+
+assumptions:
+  - id: AS-038
+    statement: "バッチには内容ハッシュが異なるファイルをパス順に詰め、1バッチの上限は classify_batch_size 件（既定10、1〜50）かつ本文合計 classify_batch_chars 文字（既定24,000）とする。各ファイルの本文は先頭 6,000 文字まで（vision 無効の画像のように本文が空のファイルはメタデータだけを送る）。1件だけのバッチは従来の単体分類プロンプトで送る。labels.jsonl への保存は検証に通ったバッチごとにまとめて行い、再開時は labels.jsonl に記録済みかどうかで未処理を判定する（バッチの詰め方が変わっても完了分は再送しない）。バッチ呼び出しの並列数は --concurrency に従う"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-039
+    statement: "バッチ分類の max_tokens は 500 × 件数 + 500（上限 8,000）とする。応答の検証（全 file_id がちょうど1回ずつ現れ、各ラベルがスキーマと category の enum を満たすこと）に失敗したらバッチ全体を検証エラー付きで1回だけ再生成し、それでも失敗したバッチは各ファイルを単体分類でやり直す（単体分類の失敗は AC-029 と同じく errors.jsonl に記録）"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-040
+    statement: "ルールは .dn/config.yaml の rules に {glob, category} の並びで書き、対象ディレクトリからの相対 POSIX パスに gitignore 構文で照合して最初に一致したものを使う。既定ルールは `*.log` → misc の1件。category は taxonomy の slug か misc（予約語だが有効）。taxonomy が無いときは misc 以外のルールを警告して無視する。ラベルは内容ハッシュ単位なので、同じハッシュのファイルのどれか1件がルールに一致すればハッシュ全体にそのルールを適用する（複数ルールに一致したらパス順で最初のファイルの最初のルール）。ルールは毎回 LLM 呼び出しの前に評価し、保存済みラベルより優先する。ルールで決まったラベルは confidence 1.0、title はファイル名、category が misc なら has_domain_knowledge は false"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-041
+    statement: "vision（画像ファイルの文字起こしとスキャン PDF 頁の OCR）は既定で無効とし、config の images: true または CLI の --images で有効にする。--no-images は既定と同じ動作として残す。無効時は画像の本文を空（quality: none）、PDF の低文字数頁は pymupdf が抽出できたテキストのままとする（AS-025 もこの内容に改訂）"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
+open_questions: []
+
+acceptance:
+  - id: AC-106
+    kind: functional
+    given: "taxonomy があり、内容の異なる抽出可能なテキストファイル25件（各1,000文字）がある対象ディレクトリ（classify_batch_size 既定値10）"
+    when: "classify を実行する"
+    then: "分類の LLM 呼び出しは3回で、25件すべてのラベルを labels.jsonl に記録する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-107
+    kind: nfr
+    given: "各 5,000 文字のテキストファイル10件"
+    when: "classify を実行する"
+    then: "1回の分類呼び出しで送る本文の合計は 24,000 文字以下で、各ファイルの本文は 6,000 文字以下"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-108
+    kind: functional
+    given: "バッチ分類の応答が2回続けて1件の file_id を欠落させる（不正な応答）"
+    when: "classify を実行する"
+    then: "そのバッチの各ファイルを単体分類でやり直し、全ファイルのラベルを labels.jsonl に記録する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-109
+    kind: functional
+    given: "config の rules に `docs/legal/**` → contracts があり、`docs/legal/nda.txt` と既定ルールに一致する `logs/app.log` がある"
+    when: "classify を実行する"
+    then: "2件とも LLM を呼ばずにラベルを記録し、nda.txt は contracts、app.log は misc（has_domain_knowledge: false）になる"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-110
+    kind: functional
+    given: "taxonomy がある状態で、taxonomy の slug にも misc にも一致しない category を指定したルール、または glob が空のルールを持つ config"
+    when: "`dn plan` を実行する"
+    then: "不正なルールの番号と理由を含むエラーを出力し、終了コード2を返す（misc を指定したルールはエラーにしない）"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-111
+    kind: functional
+    given: "PNG 画像と、文字数50未満の頁を含む PDF がある対象ディレクトリ（images の設定なし）"
+    when: "`--images` を付けずに `dn plan` を実行する"
+    then: "LLM に画像を1枚も送信せず、PNG は quality: none、PDF は quality: text として抽出結果を保存する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-112
+    kind: functional
+    given: "PNG 画像1件とテキスト1件があり、images を有効にしていない対象ディレクトリ"
+    when: "`dn status --json` を実行する"
+    then: "推定コストに vision 呼び出し分を含まない（`--images` 付きの推定より小さい値を返す）"
+    priority: should
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-113
+    kind: functional
+    given: "内容が同じ `docs/legal/nda.txt`（ルールで contracts に一致）と `archive/nda.txt`（どのルールにも一致しない）"
+    when: "classify を実行する"
+    then: "LLM を呼ばずに、そのハッシュのラベルを contracts として記録する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-114
+    kind: functional
+    given: "`dn run` を1回終えたツリーに、rules へ `docs/legal/**` → contracts を追加した状態"
+    when: "`dn run` を再実行する"
+    then: "新しいルールに一致するファイルのラベルを LLM 呼び出しなしで contracts に更新し、分類の LLM 呼び出しは0件になる"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-115
+    kind: functional
+    given: "`--concurrency 1`、内容の異なるテキスト30件で、3回目のバッチ分類呼び出しが KeyboardInterrupt で中断した run"
+    when: "再実行する"
+    then: "完了した2バッチの20件は再送せず、残り10件だけを分類して30件すべてのラベルを記録する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-116
+    kind: functional
+    given: "バッチが2回続けて不正な応答を返し、単体分類へ切り替えた後に1件だけが2回続けてスキーマ違反になる"
+    when: "classify を実行する"
+    then: "その1件を errors.jsonl に記録し、残りのファイルのラベルは labels.jsonl に記録する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-117
+    kind: functional
+    given: "1回のバッチ応答に confidence 0.9 / 0.6 / 0.4 の3件が含まれる（閾値 0.6）"
+    when: "classify を実行する"
+    then: "0.9 と 0.6 のファイルは LLM の返したカテゴリ、0.4 のファイルは misc として labels.jsonl に記録する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0

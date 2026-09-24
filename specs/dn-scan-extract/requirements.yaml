@@ -36,7 +36,7 @@ assumptions:
     resolve_by: "2026-10-08"
 
   - id: AS-025
-    statement: "`--no-images` は画像ファイルに加え、スキャンPDFの低文字数頁の画像化OCRも止める。その頁は空テキストとし quality: text のまま記録する"
+    statement: "vision 無効時（FEAT-009 以降の既定）は画像ファイルの本文を空（quality: none）とし、スキャン PDF の低文字数頁は画像化せず pymupdf が抽出できたテキストのままとする（quality: text）"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -161,16 +161,13 @@ acceptance:
 
   - id: AC-022
     kind: functional
-    given: "テキスト層のある頁と、文字数50未満の頁が混在する PDF"
+    given: "テキスト層のある頁と、文字数50未満の頁が混在する PDF（images 有効: --images または config の images: true）"
     when: "extract を実行する"
     then: "文字数50未満の頁だけを画像化して LLM の OCR に渡し、quality: mixed を記録する"
     priority: must
     verify: test
-    status: pass
+    status: pending
     attempts: 0
-    verified_at: 2026-09-24
-    note: fixture の PDF は p1 171文字 / p2 0文字。vision 要求はちょうど1回で p2 の PNG のみ、quality mixed、OCR テキストと p1 テキストの両方を検証
-    evidence: tests/test_scan_extract.py:170
 
   - id: AC-023
     kind: functional
@@ -188,15 +185,12 @@ acceptance:
   - id: AC-024
     kind: functional
     given: "PNG 画像ファイル"
-    when: "`--no-images` を付けずに extract を実行する / `--no-images` を付けて実行する"
+    when: "`--images` を付けて extract を実行する / `--images` を付けずに（既定で）実行する"
     then: "前者は LLM に画像を送信し、応答の文字起こしを本文として保存する。後者は LLM に画像を送信しない"
     priority: must
     verify: test
-    status: pass
-    attempts: 2
-    verified_at: 2026-09-24
-    note: "前者: :233 で image ブロック/media_type=image/png/base64データ一致と文字起こし保存を検証。後者: :253 Options(no_images=True) でリクエストに image ブロック無し・submit_vision 無し。CLI経路: :323 で実CLI dn plan を --no-images 有/無で比較し quality none vs vision、generated 差1 を検証。src/dn/cli.py:286 を no_images=False に一時変異すると :344 で失敗する(判別力確認済み、復元済み)。pytest tests/test_scan_extract.py 16 passed"
-    evidence: tests/test_scan_extract.py:323
+    status: pending
+    attempts: 0
 
   - id: AC-025
     kind: functional
