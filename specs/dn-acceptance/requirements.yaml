@@ -1,0 +1,89 @@
+# FEAT-008 — 要件の単一の正。実装・テスト・レビューはこれに従属する。
+# 出典: 実装指示書 §2 Claude Code 連携, §10 CI・受け入れ基準
+# FEAT-006 から、実 API / 実 CI / 実機が必要な受け入れ基準を分離した。
+id: FEAT-008
+title: "Distill Nexus Claude Code 連携と受け入れ基準"
+status: frozen
+
+intent: "Claude Code から CLI を安全に呼べるスキルを用意し、指示書 §10 の受け入れ基準のうち実 API・実 CI・実機を要する項目を人間が検証できる状態で渡す。"
+
+out_of_scope:
+  - "分類ロジックを Claude Code 側（スキル・プロンプト）に持たせること。スキルは CLI を呼ぶ手順のみを書く"
+  - "PyPI への公開作業・リリース自動化"
+  - "実 API キーを使った録画ファイル（tests/fixtures/llm/）の作成をこの実装セッションで行うこと"
+
+assumptions:
+  - id: AS-020
+    statement: "実 API キーと実 CI 実行を必要とする受け入れ基準（3OS の CI 緑、実応答を録画したサンプルでの分類精度、INDEX.md の QA 正答数、推定コストと実測の差、Claude Code 実機での plan→承認→apply）は verify: manual とし、本実装セッションでは証跡を作れないため人間に返す"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
+open_questions: []
+
+acceptance:
+  - id: AC-080
+    kind: functional
+    given: "リポジトリ"
+    when: "`.claude/skills/dn/SKILL.md` を読む"
+    then: "`dn plan --json` → 結果の要約提示 → ユーザー承認 → `dn apply --yes --json` の順の手順と、分類判断を CLI に委ねる旨の記述を含む"
+    priority: must
+    verify: inspection
+    evidence: ""
+    status: pending
+    attempts: 0
+
+  - id: AC-105
+    kind: functional
+    given: "リポジトリ"
+    when: "`.claude/skills/dn/SKILL.md` を読む"
+    then: "`dn plan` が終了コード0以外で失敗した場合と、ユーザーが承認を拒否した場合に `dn apply` を実行しない手順を含む"
+    priority: must
+    verify: inspection
+    evidence: ""
+    status: pending
+    attempts: 0
+
+  - id: AC-081
+    kind: functional
+    given: "GitHub Actions のワークフロー定義"
+    when: "PR を作成する"
+    then: "windows-latest / ubuntu-latest / macos-latest × Python 3.11 / 3.12 の全ジョブで ruff・mypy --strict・pytest --cov（80%以上）が成功する"
+    priority: must
+    verify: manual
+    evidence: ""
+    status: pending
+    attempts: 0
+
+  - id: AC-082
+    kind: nfr
+    given: "実 API で録画した `tests/fixtures/llm/` の応答と、正解ラベル付きのサンプルツリー（約40ファイル）"
+    when: "DN_LLM_REPLAY=1 で分類を実行する"
+    then: "正解ラベルとの一致率が 90% 以上"
+    priority: must
+    verify: manual
+    evidence: ""
+    status: pending
+    attempts: 0
+
+  - id: AC-083
+    kind: nfr
+    given: "サンプルツリーから生成した INDEX.md と `tests/fixtures/qa.yaml` の10問"
+    when: "新しい Claude セッションに INDEX.md を貼って10問に答えさせる"
+    then: "10問中8問以上（80%以上）に正答する"
+    priority: must
+    verify: manual
+    evidence: ""
+    status: pending
+    attempts: 0
+
+  - id: AC-084
+    kind: nfr
+    given: "サンプルツリーに対する実 API での実行"
+    when: "`dn status` の推定コストと `.dn/logs/<run_id>.json` の実測コストを比べる"
+    then: "差が ±30% 以内"
+    priority: should
+    verify: manual
+    evidence: ""
+    status: pending
+    attempts: 0

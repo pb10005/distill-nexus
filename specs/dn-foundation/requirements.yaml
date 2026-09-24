@@ -2,7 +2,7 @@
 # 出典: 「ファイル整理・ドメイン知識抽出ツール 実装指示書」(2026-09-24) §1, §2, §7, §8, §9
 id: FEAT-001
 title: "Distill Nexus 基盤: パッケージ雛形・設定・スキーマ・OS差分吸収"
-status: draft
+status: frozen
 
 intent: "Distill Nexus (dn) の全フェーズが共通に依存する土台（CLIエントリ、設定とtaxonomyの検証、LLM出力を含むpydanticスキーマ、Windows/Linux/macOSのファイル名・パス差分の吸収、危険な対象ディレクトリの拒否）を、3OSで同一コードとして提供する。"
 
@@ -30,6 +30,12 @@ assumptions:
     resolve_by: "2026-10-08"
   - id: AS-004
     statement: "Windows のパス長上限は 260 文字、POSIX のファイル名長上限は 255 バイトとして扱う。`long_path()` は Windows でのみ `\\\\?\\` を付与し、他OSでは入力をそのまま返す。切り詰め後の上限はファイル名 200 文字"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
+  - id: AS-024
+    statement: "終了コードが複数該当する場合の優先順位は 4（コスト上限）> 2（設定・引数）> 1（一般エラー）> 3（一部ファイル失敗）> 0 とする"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -97,6 +103,16 @@ acceptance:
     status: pending
     attempts: 0
 
+  - id: AC-104
+    kind: functional
+    given: "`..`、`.`、空文字、禁止文字だけから成る名前（除去後に空になる名前）"
+    when: "`safe_name()` に渡す"
+    then: "空でない代替名 `_` を返す（`..` や `.` を返さない）"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
   - id: AC-007
     kind: functional
     given: "`<>:\"/\\|?*` または制御文字（U+0000-U+001F）を含む名前"
@@ -149,7 +165,7 @@ acceptance:
 
   - id: AC-012
     kind: functional
-    given: "対象ディレクトリがファイルシステムのルート、またはホームディレクトリそのもの"
+    given: "対象ディレクトリがファイルシステムのルート（`/`、Windows のドライブルート `C:\\`）、またはホームディレクトリそのもの"
     when: "`--i-know-what-i-am-doing` を付けずに scan / plan / apply / run を実行する"
     then: "実行を拒否し、終了コード2を返す"
     priority: must

@@ -1,0 +1,194 @@
+# FEAT-007 — 要件の単一の正。実装・テスト・レビューはこれに従属する。
+# 出典: 実装指示書 §4 manifest, §5.5, §8 ファイルロック・別ドライブ移動, §9 破壊的操作・ロールバック
+# FEAT-004 から spec-challenger の指摘（上書き経路・undo 不能な操作・lock の寿命）を受けて分割した。
+id: FEAT-007
+title: "Distill Nexus 実行・巻き戻しフェーズ（apply / undo）"
+status: frozen
+
+intent: "plan.json の移動を、既存ファイルを1つも上書き・消失させずに実行し、manifest から run 単位で元へ戻せるようにする。"
+
+out_of_scope:
+  - "元ファイルの内容の書き換え・完全削除（重複は _duplicates/ かOSのゴミ箱へ送るのみ）"
+  - "OS のゴミ箱からの自動復元（send2trash は復元 API を持たない）"
+  - "複数 run を横断した undo の選択的マージ（undo は run 単位）"
+  - "ネットワークドライブ・クラウド同期フォルダ固有のロック制御"
+
+assumptions:
+  - id: AS-015
+    statement: "undo は manifest の to→from を逆順に戻した後、apply で作成されて空になったディレクトリ（出力先配下）を削除する。manifest.json 自体は `undone_at` を付けて残す"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-028
+    statement: "manifest.json は指示書 §4 の単一 run 形式を run の配列へ拡張し、`{version: 1, root, runs: [{run_id, out_root, moves: [...], undone_at}]}` とする。from は root からの相対 POSIX パスを元のコードポイント列のまま記録する。to は出力先が root 配下なら root からの相対 POSIX パス、root の外なら絶対 POSIX パスとする"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-029
+    statement: "`.dn/lock` には保持プロセスの PID を書く。PID のプロセスが存在しない lock は stale として警告を出して取り直す。apply と undo の両方が lock を取り、正常終了・例外・KeyboardInterrupt のいずれでも finally で削除する"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+  - id: AS-030
+    statement: "apply 中のファイル単位の失敗（PermissionError、OSError）は errors.jsonl に記録して残りを続行し、終了コード3とする。事前検証の失敗だけが全件中止（終了コード1）になる"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
+open_questions: []
+
+acceptance:
+  - id: AC-049
+    kind: functional
+    given: "plan.json 生成後に移動元ファイルの1件が削除された状態"
+    when: "`dn apply --yes` を実行する"
+    then: "事前検証で失敗し、どのファイルも移動せず、終了コード1を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+
+  - id: AC-050
+    kind: functional
+    given: "有効な plan.json"
+    when: "`dn apply --yes` を実行する"
+    then: "全件を移動し、移動1件ごとに from, to（root からの相対 POSIX パス）, hash, op を manifest.json に追記し、移動後ファイルの mtime は移動前と一致する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+
+  - id: AC-051
+    kind: functional
+    given: "`--copy` で生成した plan"
+    when: "`dn apply --yes` を実行する"
+    then: "元ファイルを元の場所に残し、移動先にコピーを作成する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+
+  - id: AC-052
+    kind: functional
+    given: "`--dedupe move`（既定）・`--copy` なしの `dn apply` で移動を実行した直後のツリー"
+    when: "`dn undo` を実行し、さらにもう一度 `dn undo` を実行する"
+    then: "1回目で全ファイルのパス・ハッシュ・mtime が apply 前と一致し、manifest に undone_at を記録する。2回目は何も移動しない"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+
+  - id: AC-053
+    kind: functional
+    given: "apply 後に移動先ファイル1件の内容が改変された、または from の位置に別ファイルが置かれた"
+    when: "`dn undo` を実行する"
+    then: "該当ファイルだけをスキップして警告を出力し、残りのファイルは元の位置へ戻す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+
+  - id: AC-054
+    kind: functional
+    given: "生存中のプロセスの PID を記録した `.dn/lock` が存在する、または正規化・シンボリックリンク解決後の移動先が対象ディレクトリと `--out` 先のどちらの配下でもない計画"
+    when: "`dn apply --yes`（lock の場合は `dn undo` も）を実行する"
+    then: "移動を拒否し、終了コード1を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-089
+    kind: functional
+    given: "plan.json 生成後に、(a) 移動先パスにファイルが作られた、(b) 移動元ファイルの内容が変わった（ハッシュ不一致）、(c) 移動先ディレクトリに書込権限が無い、の何れか"
+    when: "`dn apply --yes` を実行する"
+    then: "事前検証で失敗して該当パスを出力し、どのファイルも移動・上書きせず、終了コード1を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-090
+    kind: functional
+    given: "`--dedupe trash` で apply した run"
+    when: "`dn undo` を実行する"
+    then: "trash した件はゴミ箱からの手動復元が必要という警告とパス一覧を出力してスキップし、他の件を元の位置へ戻し、終了コード3を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-091
+    kind: functional
+    given: "`--copy` で apply した run"
+    when: "`dn undo` を実行する"
+    then: "ハッシュが一致するコピーだけを削除し、元ファイルは内容・mtime とも変わらない"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-092
+    kind: functional
+    given: "5件の plan のうち3件目の移動が PermissionError を送出する"
+    when: "`dn apply --yes` を実行する"
+    then: "残り4件を移動し、3件目を errors.jsonl に記録し、manifest には成功した4件だけを記録し、終了コード3を返す"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-093
+    kind: functional
+    given: "apply が正常終了・例外終了・KeyboardInterrupt の何れかで終わった後"
+    when: "`.dn/lock` の有無を確認する"
+    then: "`.dn/lock` は削除されている（存在しない）"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-094
+    kind: functional
+    given: "`.dn/lock` に存在しない PID が記録されている（stale lock）"
+    when: "`dn apply --yes` を実行する"
+    then: "stale lock の警告を出力して lock を取り直し、移動を実行する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-095
+    kind: functional
+    given: "run A、run B の順に apply し、B が A の移動先ファイルを移動元にしている"
+    when: "`dn undo` を実行する / `dn undo --run-id A` を実行する"
+    then: "前者は未 undo の最新 run（B）だけを戻す。後者（B が未 undo のとき）は A の該当件をスキップして警告を出力する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-096
+    kind: functional
+    given: "NFD 表記のファイル名（`がくしゅう.txt` を NFD 化したもの）"
+    when: "apply の後に undo を実行する"
+    then: "manifest の from は元のコードポイント列のまま記録され、undo 後のファイル名は元のコードポイント列と一致する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-097
+    kind: functional
+    given: "`--out` に対象ディレクトリの外のディレクトリを指定した plan"
+    when: "`dn apply --yes` の後に `dn undo` を実行する"
+    then: "apply 後はファイルが `<out>/<category>/...` に存在し、undo 後は全ファイルが元の位置に残る（元の相対パスで一致する）"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0

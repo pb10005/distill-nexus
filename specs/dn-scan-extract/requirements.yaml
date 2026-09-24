@@ -2,7 +2,7 @@
 # 出典: 実装指示書 §3, §5.1, §5.2, §8
 id: FEAT-002
 title: "Distill Nexus scan / extract フェーズ"
-status: draft
+status: frozen
 
 intent: "対象ディレクトリの雑多なファイルを安全に列挙・ハッシュ化し、形式ごとの抽出器で正規化Markdownへ変換して、後続の分類と知識抽出が同じテキストを共有できるようにする。"
 
@@ -35,12 +35,18 @@ assumptions:
     owner: pb10005
     resolve_by: "2026-10-08"
 
+  - id: AS-025
+    statement: "`--no-images` は画像ファイルに加え、スキャンPDFの低文字数頁の画像化OCRも止める。その頁は空テキストとし quality: text のまま記録する"
+    status: assumed
+    owner: pb10005
+    resolve_by: "2026-10-08"
+
 open_questions: []
 
 acceptance:
   - id: AC-014
     kind: functional
-    given: "`.git/` `node_modules/` `__pycache__/` `.DS_Store` `Thumbs.db` `desktop.ini` `~$tmp.docx` と隠しファイル、`.dnignore` に一致するファイル、通常ファイル3件を含むディレクトリ"
+    given: "`.git/` `node_modules/` `__pycache__/` `.dn/` `.DS_Store` `Thumbs.db` `desktop.ini` `~$tmp.docx` と隠しファイル、`.dnignore` と config の exclude に一致するファイル、出力先の `organized/_knowledge/` `organized/_duplicates/` `organized/manifest.json`、通常ファイル3件を含むディレクトリ"
     when: "`dn scan` を実行する"
     then: "`.dn/cache/inventory.jsonl` に通常ファイル3件だけを記録する"
     priority: must
@@ -62,7 +68,7 @@ acceptance:
     kind: functional
     given: "内容が同一でファイル名が異なる2ファイル"
     when: "`dn scan --json` を実行する"
-    then: "両者に同じ blake2b ハッシュを記録し、重複候補として出力する"
+    then: "両者に同じ blake2b ハッシュを記録し、重複候補として出力する。各エントリに hash_mode（先頭4MB方式は head4m、全量は full）を記録する"
     priority: must
     verify: test
     status: pending
@@ -72,7 +78,7 @@ acceptance:
     kind: functional
     given: "前回の scan 以降に mtime とサイズが変わっていないファイル"
     when: "`dn scan` を再実行する"
-    then: "そのファイルのハッシュを再計算せず、前回の inventory の値を再利用する（hash_computed=0 を出力する）"
+    then: "そのファイルのハッシュを再計算せず前回の値を再利用し（hash_computed=0 を出力する）、前回以降に削除されたファイルは inventory から除去する"
     priority: must
     verify: test
     status: pending
@@ -163,6 +169,16 @@ acceptance:
     given: "破損した docx（zip として不正なバイト列）を含む複数ファイル"
     when: "extract を実行する"
     then: "破損ファイルは `errors.jsonl` に path, phase, error, traceback を記録し、残りのファイルの抽出結果を保存する"
+    priority: must
+    verify: test
+    status: pending
+    attempts: 0
+
+  - id: AC-098
+    kind: functional
+    given: "サイズと先頭4MBが同一で末尾だけ異なる 4MB 超の2ファイル（`--full-hash` なし）"
+    when: "`dn scan` を実行する"
+    then: "先頭4MB方式のハッシュが一致した 4MB 超のファイルは全量ハッシュで再計算し、両者に異なるハッシュ（hash_mode: full）を記録する"
     priority: must
     verify: test
     status: pending

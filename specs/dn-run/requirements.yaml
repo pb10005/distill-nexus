@@ -1,23 +1,17 @@
 # FEAT-006 — 要件の単一の正。実装・テスト・レビューはこれに従属する。
-# 出典: 実装指示書 §2 Claude Code 連携, §7 CLI, §9 冪等性・エラー処理, §10 統合テスト・CI・受け入れ基準
+# 出典: 実装指示書 §7 CLI, §9 冪等性・エラー処理, §10 統合テスト
 id: FEAT-006
-title: "Distill Nexus 一括実行・状態表示・Claude Code 連携・受け入れ基準"
-status: draft
+title: "Distill Nexus 一括実行・状態表示・export"
+status: frozen
 
-intent: "全フェーズを1コマンドで冪等に実行でき、人間と Claude Code エージェントの両方が同じ CLI の機械可読出力を読んで plan → 承認 → apply を安全に進められるようにする。"
+intent: "全フェーズを1コマンドで冪等に実行でき、中断や部分失敗からも再開でき、人間とエージェントの両方が同じ CLI の機械可読出力を読めるようにする。"
 
 out_of_scope:
-  - "分類ロジックを Claude Code 側（スキル・プロンプト）に持たせること。スキルは CLI を呼ぶ手順のみを書く"
   - "PyPI への公開作業・リリース自動化"
   - "常駐監視（ディレクトリ変更を検知して自動実行する daemon / watch モード）"
   - "SIGINT 以外のシグナル（SIGKILL 中の書き込み途中ファイル）からの自動修復。manifest の追記単位での整合のみ保証する"
 
 assumptions:
-  - id: AS-020
-    statement: "実 API キーと実 CI 実行を必要とする受け入れ基準（3OS の CI 緑、実応答を録画したサンプルでの分類精度、INDEX.md の QA 正答数、推定コストと実測の差、Claude Code 実機での plan→承認→apply）は verify: manual とし、本実装セッションでは証跡を作れないため人間に返す"
-    status: assumed
-    owner: pb10005
-    resolve_by: "2026-10-08"
   - id: AS-021
     statement: "`tests/fixtures/sample_tree/` は `scripts/make_sample_tree.py` で生成してコミットする。Windows 予約名・260文字超のパスを持つファイルは Windows の checkout を壊すためコミットせず、テスト実行時に一時ディレクトリへ生成する"
     status: assumed
@@ -64,9 +58,9 @@ acceptance:
 
   - id: AC-073
     kind: functional
-    given: "classify の途中（3件目の処理中）で KeyboardInterrupt により中断した run"
+    given: "`--concurrency 1` で、モック LLM が3回目の分類呼び出しで KeyboardInterrupt を送出して中断した run"
     when: "`dn run` を再実行する"
-    then: "中断前に完了したファイルの LLM 呼び出しは再実行しない。残りのファイルのラベルを labels.jsonl に保存する"
+    then: "中断前に完了した2件の LLM 呼び出しは再実行しない。残りのファイルのラベルを labels.jsonl に保存する（末尾に途中まで書かれた行があっても読み飛ばす）"
     priority: must
     verify: test
     status: pending
@@ -132,57 +126,42 @@ acceptance:
     status: pending
     attempts: 0
 
-  - id: AC-080
+  - id: AC-068
     kind: functional
-    given: "リポジトリ"
-    when: "`.claude/skills/dn/SKILL.md` を読む"
-    then: "`dn plan --json` → 結果の要約提示 → ユーザー承認 → `dn apply --yes --json` の順の手順と、分類判断を CLI に委ねる旨の記述を含む"
+    given: "生成済みの _knowledge/"
+    when: "`dn export --format md` / `--format jsonl` / `--format zip` を実行する"
+    then: "それぞれ全ファイルを連結した単一の .md、1行1ファイルの .jsonl、_knowledge/ 全体の .zip を生成する"
     priority: must
-    verify: inspection
-    evidence: ""
+    verify: test
     status: pending
     attempts: 0
 
-  - id: AC-081
+  - id: AC-101
     kind: functional
-    given: "GitHub Actions のワークフロー定義"
-    when: "PR を作成する"
-    then: "windows-latest / ubuntu-latest / macos-latest × Python 3.11 / 3.12 の全ジョブで ruff・mypy --strict・pytest --cov（80%以上）が成功する"
+    given: "`dn run --apply --yes` を1回完了したサンプルツリー"
+    when: "もう一度 `dn run --apply --yes` を実行する"
+    then: "LLM の実呼び出し0件、manifest への移動記録の追記0件で終了し、`no changes` を出力する"
     priority: must
-    verify: manual
-    evidence: ""
+    verify: test
     status: pending
     attempts: 0
 
-  - id: AC-082
-    kind: nfr
-    given: "実 API で録画した `tests/fixtures/llm/` の応答と、正解ラベル付きのサンプルツリー（約40ファイル）"
-    when: "DN_LLM_REPLAY=1 で分類を実行する"
-    then: "正解ラベルとの一致率が 90% 以上"
+  - id: AC-102
+    kind: functional
+    given: "標準入力が TTY でない環境（Claude Code・CI）"
+    when: "`--yes` なしで `dn apply` または `dn run --apply` を実行する"
+    then: "確認待ちで停止せず、ファイルを移動しないまま `--yes` が必要な旨を出力して終了コード2を返す"
     priority: must
-    verify: manual
-    evidence: ""
+    verify: test
     status: pending
     attempts: 0
 
-  - id: AC-083
-    kind: nfr
-    given: "サンプルツリーから生成した INDEX.md と `tests/fixtures/qa.yaml` の10問"
-    when: "新しい Claude セッションに INDEX.md を貼って10問に答えさせる"
-    then: "10問中8問以上（80%以上）に正答する"
+  - id: AC-103
+    kind: functional
+    given: "plan.json が無い対象ディレクトリ、または manifest.json が無い対象ディレクトリ"
+    when: "前者で `dn apply --yes`、後者で `dn undo` を実行する"
+    then: "対象ファイルが無い旨のエラーを出力し、終了コード2を返す"
     priority: must
-    verify: manual
-    evidence: ""
-    status: pending
-    attempts: 0
-
-  - id: AC-084
-    kind: nfr
-    given: "サンプルツリーに対する実 API での実行"
-    when: "`dn status` の推定コストと `.dn/logs/<run_id>.json` の実測コストを比べる"
-    then: "差が ±30% 以内"
-    priority: should
-    verify: manual
-    evidence: ""
+    verify: test
     status: pending
     attempts: 0

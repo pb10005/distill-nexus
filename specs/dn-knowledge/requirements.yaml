@@ -1,8 +1,8 @@
 # FEAT-005 — 要件の単一の正。実装・テスト・レビューはこれに従属する。
 # 出典: 実装指示書 §4 知識ベース・AI入力性の要件, §5.6, §5.7, §6.3, §6.4, §7 export
 id: FEAT-005
-title: "Distill Nexus 知識系フェーズ（distill / synthesize / export）"
-status: draft
+title: "Distill Nexus 知識系フェーズ（distill / synthesize）"
+status: frozen
 
 intent: "抽出テキストから根拠付きの用語・エンティティ・事実を取り出して統合し、LLMのコンテキストやRAGにそのまま投入できる `_knowledge/` を毎回一貫した形で再生成する。"
 
@@ -29,7 +29,7 @@ assumptions:
     owner: pb10005
     resolve_by: "2026-10-08"
   - id: AS-019
-    statement: "facts・terms の source は `整理後パス`（apply 済みなら manifest の to、未 apply なら元の相対パス）に `#<locator>` を付けた文字列とする"
+    statement: "facts・terms の source は `整理後パス`（apply 済みなら manifest の to、未 apply なら元の相対パス）に `#<locator>` を付けた文字列とする。apply 後の再実行では organized/ 配下のパスがそのまま整理後パスになる。facts/<hash>.json はハッシュで再利用し、パスは synthesize 時に最新の inventory から付け直す"
     status: assumed
     owner: pb10005
     resolve_by: "2026-10-08"
@@ -101,7 +101,7 @@ acceptance:
     kind: functional
     given: "トピック文書生成で LLM が入力に存在しない `[src: F-999]` を出力する"
     when: "synthesize を実行する"
-    then: "そのトピック文書を検証エラーとして `errors.jsonl` に記録する"
+    then: "1回だけ再生成し、それでも不正な src を含む場合はその topics/<slug>.md を書き出さずに `errors.jsonl` に記録し、終了コード3を返す"
     priority: must
     verify: test
     status: pending
@@ -139,9 +139,9 @@ acceptance:
 
   - id: AC-065
     kind: functional
-    given: "INDEX.md に存在しないファイルへのリンクがある、または INDEX+overview+glossary が index_token_budget を超える"
-    when: "synthesize の検証を実行する"
-    then: "失敗内容を出力し、終了コード1を返す"
+    given: "初回生成で INDEX+overview+glossary が index_token_budget を超える知識"
+    when: "synthesize を実行する"
+    then: "glossary の全表を `topics/glossary.md` へ、overview の詳細を `topics/overview-detail.md` へ分割して INDEX.md から参照し、budget 以内に収まれば終了コード0を返す"
     priority: must
     verify: test
     status: pending
@@ -151,7 +151,7 @@ acceptance:
     kind: functional
     given: "正常に生成された _knowledge/"
     when: "検証を実行する"
-    then: "facts.jsonl の全 source のパス部分が sources.md の表に含まれ、見出しは `###` 以下、GFM 表以外の HTML タグを含まない"
+    then: "facts.jsonl の全 source のパス部分が sources.md の表に含まれ、見出しは `###` 以下で、コードブロックの外に HTML 要素（`<!-- manual -->` / `<!-- /manual -->` コメントを除く）を含まない"
     priority: must
     verify: test
     status: pending
@@ -167,11 +167,11 @@ acceptance:
     status: pending
     attempts: 0
 
-  - id: AC-068
+  - id: AC-100
     kind: functional
-    given: "生成済みの _knowledge/"
-    when: "`dn export --format md` / `--format jsonl` / `--format zip` を実行する"
-    then: "それぞれ全ファイルを連結した単一の .md、1行1ファイルの .jsonl、_knowledge/ 全体の .zip を生成する"
+    given: "INDEX.md に存在しないファイルへのリンクがある、または分割後も INDEX+overview+glossary が index_token_budget を超える"
+    when: "synthesize の検証を実行する"
+    then: "失敗内容を出力し、終了コード1を返す"
     priority: must
     verify: test
     status: pending
